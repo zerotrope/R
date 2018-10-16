@@ -1,0 +1,99 @@
+#II/ Intevalles de confiance, association entre variables
+
+  0. Importation des donnees par read.csv2()
+- str va permettre la bonne importation des donnees
+```{r}
+smp.c <- read.csv2("smp1.csv")
+str(smp.c)
+```
+
+  1. Calculer un intervalle de confiance de la MOYENNE d'age des detenus
+C'est en réalité l'un des derniers calculs réalisés à la main.
+```{r}
+library(prettyR)
+describe(smp.c$age)
+```
+Nous obtenons ainsi la valeur de la moyenne, l'ecart-type et le nombre de occurences nous permettant de procéder aux calculs des bornes de l'intervalle.
+
+Borne inferieure :
+```{r}
+38.9-1.96*13.28/sqrt(797)
+```
+
+Et borne superieure :
+```{r}
+38.9+1.96*13.28/sqrt(797)
+```
+
+Ou bien en calculs relatifs (incomplet):
+```{r}
+bi <- mean(smp.c$age)-1.96*sd(smp.c$age)/sqrt(sum(smp.c$age))
+bs <- mean(smp.c$age)+1.96*sd(smp.c$age)/sqrt(sum(smp.c$age))
+```
+
+  2. Calculer un intervalle de confiance d'un pourcentage (d'une proportion)
+```{r}
+library(binom)
+binom.confint(3,10,method="all")
+```
+Plusieurs méthodes pour le calcul des intervalles de proportion et tous les spécialistes ne sont pas d'accord sur leur emploi respectif. La plus passe-partout est la 5 : "exact".
+
+Quand la taille de l'échantillon est suffisamment grande, toutes les calculs convergent :
+```{r}
+binom.confint(300,1000,method="all")
+```
+
+  3. Coefficient de corrélation
+Coefficient de corrélation de PEARSON : cas particulier de corrélation, grand classique pour quantifier la force d'association entre deux v.a. quantitatives. On parle de liaison monotone ou linéaire : plus l'une des 2 variables est grande plus l'autre l'est aussi.
+r varie entre 0 et 1 : 
+ - Lorsque r = 0 : pas corrélation (pas exactement vrai dans certains cas)
+ - Lorsque r = +/-1 : la connaissance d'une variable donne l'autre Y = aX + b
+ - Lorsque r > 0 : plus l'une des variablest est grande et plus l'autre l'est aussi. Inversement lorsque r < 0.
+L'interprétation d'une corrélation est délicate et partiellement absconse.
+Autre point, le pourcentage de variance partagé est égal au carré du coefficient de corrélation.
+La visualisation renforce nettement l'interpréation de tels chiffres.
+
+```{r}
+plot(jitter(smp.c$age),jitter(smp.c$n.enfant))
+```
+
+```{r}
+str(smp.c)
+```
+
+```{r}
+cor(smp.c$age, smp.c$n.enfant, use="complete.obs")
+```
+Le coefficient de corrélation ne suffit pas à brosser les relations entre deux variables quantitatives (i.e. lorsque le plot forme un U, la corrélation apparaîtra nulle).
+
+  4. Risque relatif et odds-ratio
+Mesure l'intensité de la liaison entre deux variables binaires : 
+ - en économie = la relation entre le genre et le fait d'être au chomage
+ - en médecine = la relation entre être un gros fumeur et le développement d'infarctus
+
+Le risque relatif [a/(a+b)]/[b/(a+b)] : facile à comprendre
+vs. 
+le odds-ratio (a/b)/(c/d) : difficile à comprendre
+
+Exemple, dans quelle mesure un nveau élevé d'évitement du danger est associé à un trouble dépressif.
+La variable évitement du danger est codées en 3 classes 0, 1 et 2. On va la recoder en 0 pour 1 ou 2 et en 1 pour 3 :
+```{r}
+smp.c$ed.b <- ifelse(smp.c$ed>2,1,0)
+str(smp.c)
+```
+
+Vérifier la création de la nouvelle variable ed.b ne suffit pas, il est nécessaire de vérifier l'association correcte de toutes ses valeurs :
+```{r}
+table(smp.c$ed.b,smp.c$ed,deparse.level=2,useNA="always")
+```
+Aucune des valeurs de ed (colonnes) de 1 ou 2 ne sont représentées dans la ligne 1 de ed.b nous sommes donc OK.
+
+Calculs des risques relatifs et odds-ratio :
+```{r}
+library(Epi)
+twoby2(1-smp.c$ed.b, 1-smp.c$dep.cons)
+```
+Twoby2 considère par défaut qu'une variable signifie que 0 = malade et 1 = non malade et que 0 = facteur de risque lorsque 1 = ne pas avoir de facteur de risque. C'est exactement le contraire de l'échantillon. On inverse donc les deux variables.
+
+On observe une différence significative du odds ratio (3.26) vs le rr (1.98). C'est dû à la situation de l'échantillon où la prévalence de la maladie n'est pas faible (30% à 40%) et donc l'odds ratio est très difficilement interprétable. On devrait se concentrer sur le rr autour de 2 pour dire donc que : 
+"On a donc un risque 2 fois plus élevé de présenter un état dépressif quand on a un évitement du danger élevé par rapport au contraire".

@@ -1,0 +1,88 @@
+
+0. Importation des donnees par read.csv2()
+- str va permettre la bonne importation des donnees
+```{r}
+smp.c <- read.csv2("smp1.csv")
+str(smp.c)
+```
+
+  i. Repr�sentations Graphiques
+1. Diagramme en batons : distribution d'une va quantitative discrete
+- table calcule (factorise) le nb de détenus par metier
+- barplot va représenter des bâtons ayant pour hauteur le nombre des détenus
+```{r}
+barplot(table(smp.c$prof),col="red")
+```
+
+2. Camember
+- Plus utile pour comparer une categorie p/ a toutes les autres (peu lisible)
+```{r}
+pie(table(smp.c$prof))
+```
+
+3. Histogramme : distribution d'une va quantitative continue
+- Les bâtons sont contigus pour exprimer la continuite de la variable
+```{r}
+hist(smp.c$age,col="red",main="Distribution de l'age des detenus",xlab="age")
+```
+
+4. Boite a moustache
+```{r}
+boxplot(smp.c$age,xlab="age")
+```
+
+Comparaison des distributions de la variable "âge" p/ a la variable "recherche de sensations" :
+```{r}
+boxplot(smp.c$age~smp.c$rs,ylab="age",xlab="Recherche de sensations")
+```
+Note : Globalement la distribution en âge est legerement superieur quand on a un faible niveau de sensation plutot que lorsque l'on a un niveau de sensation élevé.
+
+5. Distribution conjointe de 2 va. quantitatives : le graphique cartesien
+- jitter permet un mouvement aléatoire a chaque point afin que les similaires ne se chevauchent pas et que le nombre de points affiches soit egal au nombre de points analyses.
+- pch determine la forme des points sur le graphique.
+```{r}
+plot(jitter(smp.c$age),jitter(smp.c$n.enfant),pch=20)
+```
+
+6. Evolution temporelle moyenne de la va. quantitative : le diagramme de temperatures
+ - Ne pouvant appliquer le diagramme de température sur les donnees des detenus nous importons un nouveau data set de patients en dépression oscultes et suivis pendant quelques semaines HDRS = "Hamilton Depressive Rating Scale"
+ - str permet de vérifier la bonne importation des données
+```{r}
+repdat <- read.csv2("outils_hdrs.csv")
+str(repdat)
+```
+
+Apres avoir installe et appele la librairie gplots nous pouvons proceder a la creation du diagramme :
+```{r}
+library(gplots)
+plotmeans(repdat$HDRS~repdat$VISIT,gap=0)
+```
+Note : L'etat des patients s'ameliore progressivement au cours du temps
+
+7. Evolution de chaque sujet
+```{r}
+interaction.plot(repdat$VISIT,repdat$NUMERO,repdat$HDRS,lty=1,legend=FALSE)
+```
+Donne une impression de fouilli mais permet d'identifier des outliers aux extr�mit�s assez simplement
+
+  ii. Mesures de Position et de Dispersion
+1. Summary
+```{r}
+summary(smp.c)
+```
+Ne pas oublier "NA's" le nombre de donnees manquantes. Prend beaucoup de place.
+
+
+2. Les devs ont donc ajoute describe afin de mieux presenter les donnees
+```{r}
+library(prettyR)
+describe(smp.c)
+```
+Inconv�nients : 
+ - ne presente ni les quartiles ni les min et max qui permettent de detecter les outliers
+ Il faut alors la compeleter
+ 
+```{r}
+describe(smp.c,num.desc = c("mean","median","min","max","valid.n"))
+```
+ 

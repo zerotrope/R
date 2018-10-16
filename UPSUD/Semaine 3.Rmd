@@ -1,0 +1,42 @@
+#III/ Tests statistiques
+
+  1. Descriptives
+Croisement des 2 variables :
+  - "existence d'un haut niveau d'évitement du danger"
+  - "existence d'un diagnostic de dépression"
+
+```{r}
+table(smp.c$ed.b, smp.c$dep.cons, deparse.level = 2, useNA = "always")
+```
+depase.level renseigne le nom de nos variable.
+useNA détermine le nombre de détenus ayant des données manquantes pour l'un des 2 variables.
+Ici 126 détenus ont les 2.
+
+Pour obtenir des pourcentages, ici estimant les proportions de déprimés chez les détenus ayant un haut niveau d'évitement du danger ou non :
+```{r}
+tab<-table(smp.c$ed.b, smp.c$dep.cons, deparse.level = 2)
+prop.table(tab, 1)
+```
+28,7% de dépression chez ceux ayant un bas niveau d'évitement du danger contre 56,8% chez ceux ayant un haut niveau d'évitement du danger. Calcul p-value nécessaire ici, a priori très petit.
+
+Estimons maintenant les proportions d'évitement du danger selon que les détenus sont déprimés ou non :
+```{r}
+prop.table(tab, 2)
+```
+48% des détenus avec un haut niveau dévitement du danger chez les déprimés
+22% chez les non déprimés
+
+  2. Test du chi²
+
+Application du test d'une part sur la variable "existence ou non d'un haut d'évitement du danger" puis à la variable "existence ou non d'une dépression" :
+```{r}
+chisq.test(smp.c$ed.b, smp.c$dep.cons, correct=FALSE)
+```
+correct = TRUE propose un test avec correction de continuité, ce qui est plus robuste mais nettement moins puissant.
+p-value très largement inférieur à 0,05, on peut donc en conclure que le hasard ne pourrait pas expliquer une telle différence de prévalence de dépression.
+
+La taille de l'échantillon est suffisante et où les pourcentages comparés ne sont ni proches de 0% ni de 100%. Dans le cas contraire il existe le test exact de Fisher :
+```{r}
+fisher.test(smp.c$ed.b, smp.c$dep.cons)
+```
+Ici aussi très largement significatif.

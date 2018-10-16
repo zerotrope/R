@@ -1,0 +1,12 @@
+SURVIVAL ANALYSIS
+
+Duration data : measure usually time duration.
+	- non negative
+	- info partially recorded
+
+Statistical consulting
+	- Input file (Excel, Access... etc.) -> convert in csv text files & import to R.
+	- Find issues with data (usually)
+	
+The logrank test is non parametric. It assumes no specific distribution of the data, it does not
+care in a sense.

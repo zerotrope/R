@@ -1,0 +1,498 @@
+---
+title: "Case Study: duration of hospitalization"
+---
+
+# Data preparation
+
+    Variable   Description
+    ---------- -----------------------------------
+    DUR        Duration of hospitalization (days)
+    AGE        Age (years)
+    SEX        1 = male 2 = female
+    TEMP       Body temperature (degrees Fahrenheit)
+    WBC        White blood cells per 100 ml blood
+    ANTIB      Antibiotic use: 1 = yes 2 = no
+    CULT       Blood culture taken 1 = yes 2 = no
+    SERV       Service: 1 = medical 2 = surgical
+    ---------- -----------------------------------
+
+```{r}
+library(ggplot2)
+library(readr)
+raw <-
+  read_tsv("hospitalization.csv",
+           col_types = cols(id = 'c',
+                            dur = 'd',
+                            age = 'd',
+                            sex = 'c',
+                            temp = 'd',
+                            wbc = 'd',
+                            antib = 'c',
+                            cult = 'c',
+                            serv = 'c'))
+
+h <- within(raw, {
+  sex <- factor(sex, levels = c('1', '2'), labels = c('m', 'f'))
+  antib <- factor(antib, levels = c('2', '1'), labels = c('no', 'yes'))
+  cult <- factor(cult, levels = c('2', '1'), labels = c('no', 'yes'))
+  serv <- factor(serv, levels = c('1', '2'), labels = c('medical', 'surgical'))
+  temp <- (temp - 32.0) * 5/9  ## convert to Celsius
+})
+h <- subset(h, select = -id)
+```
+
+# Exploratory analysis
+
+```{r}
+summary(h)
+```
+
+```{r}
+hist(h$dur)
+```
+
+```{r}
+Fn <- ecdf(h$dur)
+summary(Fn)
+```
+
+```{r}
+plot(Fn)
+```
+
+```{r}
+hist(h$temp)
+```
+
+# Q1. How many patients go through overnight hospitalization?
+
+```{r}
+table(h$dur == 0)
+```
+
+```{r}
+prop.table(table(h$dur == 0))
+```
+
+Overall, 12% of the patients did not go through overnight hospitalization.
+
+We can get a confidence interval using the Binomial test:
+```{r}
+with(h, binom.test(table(dur == 0)))
+```
+
+# Q2. Is the body temperature at admission predictive of the duration of the hospitalization?
+
+```{r}
+plot(dur ~ temp, data = h)
+```
+
+Meh!
+
+```{r}
+ggplot(h, aes(x = temp > 37, y = dur)) +
+  geom_boxplot()
+```
+The overlapping of the 2 boxes suggests that there is no additionnal arguments in favor ofthe fact that temperature would predict hospitalization duration.
+
+```{r}
+with(h, table(temp > 37, dur > 0, deparse.level = 2))
+```
+We only have 6 patients with high temperature & longer hospitalization duration.
+
+```{r}
+with(h, prop.table(table(temp > 37, dur > 0), 1))
+```
+
+# Q3. What about blood works?
+
+```{r}
+ggplot(h, aes(x = cult, y = dur)) +
+  geom_boxplot()
+```
+
+```{r}
+with(h, table(cult, dur > 0, deparse.level =2))
+```
+
+```{r}
+with(h, prop.table(table(cult, dur > 0), 1))
+```
+
+# Q4. Statistical Modeling
+
+## Data preparation
+```{r}
+h$y <- h$dur > 0
+mean_temperature <- mean(h$temp)
+h$x <- h$temp - mean_temperature
+```
+
+## The Likelihood function
+```{r}
+logLik <- function(theta) {
+  alpha <- theta[1]
+  beta <- theta[2]
+  linear_predictor <- alpha + beta * h$x
+  probabilities <- plogis(linear_predictor)
+  log_terms <- dbinom(h$y,
+                      size = 1,
+                      prob = probabilities,
+                      log = TRUE)
+  sum(log_terms)
+}
+```
+
+```{r}
+debugonce(logLik)
+logLik(c(3, 3))
+```
+debugonce will enter a step by step function code analysis the first time it is run, here on our function logLik.
+The function will return a (unique) numerical answer, here -7.568636 for alpha = beta = 3.
+
+## Numerical maximization
+```{r}
+library(maxLik)
+
+fit <- maxLik(logLik, start = c(alpha = 0, beta = 0))
+summary(fit)
+```
+maxLik provides rich output & tests providing t-value & p-value allowing to assess the rejection of H0 or not. 
+Here p-value associated with Ho : "beta = 0" is > 0.05 then we cannot reject H0 which means beta is not significantly different from 0. ie we see beta at 3.6667, able to vary of about 4 (variance = 2.0751²).
+Test on alpha H0 : "alpha = 0" is not that interesting.
+It confirms our intuition, there is no significant relation between temperature & probability of overnight hosp.
+
+## Logistic regression
+
+```{r}
+fit2 <- glm(y ~ x, data = h, family = 'binomial')
+summary(fit2)
+```
+glm = Generalized Linear Model including linear, logistic, poisson, binomial regressions...etc.
+family = 'binomial' => to process logistic regression. If y is not binary 1/0, it will return an error.
+We get the same results approx. (algo is the same).
+
+## Model-based predictions
+
+In the probability scale:
+```{r}
+predict(fit2,
+        newdata = data.frame(x = 38 - mean_temperature),
+        type = "response")
+```
+We want to predict the probability of overnight hospitalization of a patient that has a body temperature of 38°C that we compare to the avg in order to get its deviation.
+type = "response" : y-axis of the logit function (probability)
+
+This is the so-called 'linear predictor':
+```{r}
+predict(fit2,
+        newdata = data.frame(x = 38 - mean_temperature),
+        type = "link")
+```
+alpha + beta * (38 - mean_temperature) = 6.87
+type = "link" : x-axis of the logit function
+
+# Exercises with simulated data
+
+## Data generation
+```{r}
+set.seed(1234)
+rate <- 0.2
+y <- rexp(100, rate = rate)
+```
+lambda (rate) set at 0.2 albeit slides require 0.5
+
+## Mean and median
+```{r}
+mean(y)
+1/rate
+```
+rate being lambda, the theoretical counerpart of the mean(y) is 1/lambda (estimator of mean), results land pretty close.
+
+```{r}
+median(y)
+log(2)/rate
+```
+rate being lambda, the theoretical counerpart of the median(y) is log(2)/lambda (estimator of median), results land pretty close.
+
+## ECDF
+```{r}
+F <- ecdf(y)
+plot(F)
+curve(pexp(x, rate = rate), col = "red", add = TRUE)
+```
+Notes
+rexp : random from exponential
+pexp : CDF of the exponential
+dexp : Density function of the exponential
+qexp (pexp^-1) : quantile function from exponential
+
+## Survival function
+```{r}
+S <- function(t) 1 - F(t)
+curve(S(x), from = 0, to = 30)
+curve(pexp(x, rate = rate, lower.tail = FALSE), col = "red", add = TRUE)
+```
+lower.taill = TRUE : gives the p to be lower or equal (CDF)
+lower.tail = FALSE : gives 1-p to be lower or equal so the p to be higher (or equal) which is survival
+
+## Density and hazard functions
+
+```{r}
+f <- density(y, from = 0)
+curve(dexp(x, rate = rate), col = "red", from = 0, to = 25)
+lines(f)
+```
+
+```{r}
+h_empirical <- f$y / S(f$x)
+plot(f$x, h_empirical, type = "l")
+abline(h = rate, col = "red")
+```
+
+## Minus-log survival function
+
+```{r}
+clog_empirical <- -log(S(f$x))
+plot(f$x, clog_empirical, type = "l")
+abline(a = 0, b = rate, col = "red")
+```
+This kind of linear trend for minus-log survival suggests a constant hazard assumption might be appropriate for your data.
+
+## Maximum Likelihood Estimation
+
+### The log-likelihood function
+```{r}
+logLik <- function(logRate) {
+  sum(dexp(y, rate = exp(logRate), log = TRUE))
+}
+```
+
+```{r}
+f <- Vectorize(logLik)
+curve(f(x), from = -3, to = 0)
+```
+Vectorize(logLik) allow a function that initially takes one input at a time to take a whole vector instead ie. logLik.
+
+### Numerical Maximization
+```{r}
+library(maxLik)
+fit <- maxLik(f, start = c(logRate = 0))
+summary(fit)
+```
+
+```{r}
+rate_MLE_numerical <- unname(exp(fit$estimate))
+rate_MLE_numerical
+```
+
+## Comparing different estimators
+
+### Mean and median
+
+```{r}
+c(theoretical = 1/rate,
+  empirical = mean(y),
+  MLE_numerical = 1/rate_MLE_numerical)
+```
+
+```{r}
+c(theoretical = log(2) / rate,
+  empirical = median(y),
+  MLE_numerical = log(2) / rate_MLE_numerical)
+```
+
+### Survival function
+
+```{r}
+Fn <- ecdf(y)
+S_empirical <- function(t) 1.0 - Fn(t)
+S_MLE_numerical <- function(t) pexp(t, rate = rate_MLE_numerical, lower.tail = FALSE)
+S_theoretical <- function(t) pexp(t, rate = rate, lower.tail = FALSE)
+
+curve(S_empirical, from = 0, to = 40)
+curve(S_MLE_numerical, col = "blue", add = TRUE)
+curve(S_theoretical, col = "red", add = TRUE)
+```
+
+### Hazard function
+
+```{r}
+h_theoretical <- Vectorize(function(t) rate)
+h_MLE_numerical <- Vectorize(function(t) rate_MLE_numerical)
+
+curve(h_theoretical, from = 0, to = 40, col = "red",
+      xlab = "time", ylab = "hazard")
+curve(h_MLE_numerical, col = "blue", add = TRUE)
+```
+
+# Fit the exponential distribution to the hospital duration data
+
+## MLE
+```{r}
+logLik <- function(logRate) {
+  sum(dexp(h$dur, rate = exp(logRate), log = TRUE))
+}
+fit <- maxLik(logLik, start = 0)
+summary(fit)
+```
+
+## A model linking body temperature to risk
+
+### Loglikelihood function
+
+```{r}
+logLik <- function(theta) {
+  alpha <- theta[1]
+  beta <- theta[2]
+  terms <- dexp(h$dur,
+                rate = exp(alpha + beta * (h$temp - 36)),
+                log = TRUE)
+  sum(terms)
+}
+```
+
+### MLE
+```{r}
+fit <- maxLik(logLik, start = c(alpha = 0, beta = 0))
+summary(fit)
+```
+Negative beta = the higher the temperature the lower the risk of exiting the hospital or the higher the probability of hosp. duration.
+Plus beta p-value being c. 0.4, it has absolutely no significance (we cannot reject H0 stating "beta is null").
+
+### Q. What's the probability of staying 5 days or more?
+
+```{r}
+curve(pexp(5.0,
+           rate = exp(fit$estimate[1] + fit$estimate[2] * x),
+           lower.tail = FALSE),
+      from = 0, to = 2,
+      xlab = "body temperature (C) - 36 (centered)",
+      ylab = "P(T > 5 | temperature)")
+```
+How the probabilities over 5 days of more changes
+
+### How good is the exponential distribution for our data?
+
+We can only proceed with some approximate, qualitative assessments.
+
+Lets split the body temperature variable into just 2 levels: 'low' (temp<=37) and 'high' (temp>37), and compare empirical and theoretical complementary-log-log survival functions.
+
+```{r}
+h_low <- subset(h, 36 <= temp & temp <= 37)
+h_high <- subset(h, 37 < temp & temp <= 38)
+```
+we create 2 data subsets from temperature intervals.
+
+```{r}
+clog <- function(y) {
+  function(t) {
+    S <- 1.0 - ecdf(y)(t)
+    -log(S)
+  }
+}
+```
+
+```{r}
+curve(clog(h_low$dur)(x),
+      from = 0, to = 30, col = "blue",
+      xlab = "time (days)",
+      ylab = "-log(S(t))")
+abline(a = 0, b = exp(fit$estimate[1] + fit$estimate[2] * (36.5 - 36)),
+       col = 'blue', lty = 2)
+
+curve(clog(h_high$dur)(x),
+      from = 0, to = 30, col = "red", add = TRUE)
+abline(a = 0, b = exp(fit$estimate[1] + fit$estimate[2] * (37.5 - 36)),
+       col = 'red', lty = 2)
+```
+blue : lower temperature people
+red : higher temperature people
+dashes : models
+lines : observations
+
+The model fits the data rather poorly.
+
+Trying more flexible models (e.g., Weibull) is left as an exercise for the reader.
+
+## Application
+
+## Linear Regression
+```{r}
+m <- lm(dur ~temp, data = h)
+summary(m)
+```
+alpha = intercept
+beta = temp (body temperature)
+Both non significant as per the p-values
+Do we have a linear relation between hosp. duration & body temperature? NO
+  The closer temp goes to 0°C, the closer the duration of hosp. will converge to -104.413 days.
+  For every +1°C in temp, you'll stay 2.986 days more in hosp. duration
+
+An adjustment might be:
+```{r}
+m <- lm(log(dur+1) ~ temp, data = h)
+summary(m)
+```
+For each +1°C in temp, the logarithm of hosp. duration will increase by 0.5087 consisting in a positive trend although it doesn't make a lot of sense considering the tests
+
+Visualizing it:
+```{r}
+plot(log(dur+1) ~temp, data = h)
+abline(coef(m))
+```
+
+If we want to be more precise a multivariate linear regression model might be interesting:
+```{r}
+m <- lm(dur ~ temp + age, data = h)
+summary(m)
+```
+MLR tells age is significant thus >< 0 as per its p-value, age of a patient starts to be a possibily interesting variable to explain hosp. duration.
+The interecept of -219.54 is still non sensical thus the model doesn't extrapolate at all.
+
+And comparing with the generalized linear model:
+```{r}
+m <- glm(I(dur > 0) ~ temp + age, data = h, family = 'binomial')
+summary(m)
+```
+Here age is not quite significant contrary to temperature but put all together it kind of works a bit better. However wu should retain it as the temp-only model seen earlier doesn't explain the observation quite well.
+The intercept it still doesn't extrapolate well: a new born (age == 0) with 0°C body temp would imply a hosp. duration of -271 days.
+
+```{r}
+plogis(-271)
+```
+Logit (sigmoid) function returning probabilty associated with parameters of the model.
+
+## EXERCISE
+Use model 2 (glm) to predict to predict P(y > 0 | Temp = 38, Age = 45) #mean_age <- mean(h$age)
+```{r}
+temp <- h$temp
+age <- h$age
+mean_temp <- mean(temp)
+mean_age <- mean(age)
+predict(m,
+        newdata = data.frame(temp = 38 - mean_temp),
+        type = "response")
+```
+Erreur?? Quelle est la syntaxe??
+
+Essai avec MLE:
+```{r}
+logLik2 <- function(theta) {
+  alpha <- theta[1]
+  beta1 <- theta[2]
+  beta2 <- theta[3]
+  MLR_predictor <- alpha + beta1 * temp + beta2 * age
+  probabilities <- plogis(MLR_predictor)
+  log_terms <- dbinom(h$y,
+                      size = 1,
+                      prob = probabilities,
+                      log = TRUE)
+  sum(log_terms)
+}
+```
+
+```{r}
+fit_MLR <- maxLik(logLik2, start = c(alpha = 0, beta1 = 0, beta2 = 0))
+summary(fit_MLR)
+```
