@@ -1,0 +1,325 @@
+---
+title: "Cox regression"
+---
+Cox Proportional hazard models (CPH)
+Semi-parametric : beta is a parameter but yet we do not fully specify the distribution of the outcome.
+To carry on estimation (classical approaches: MLE) here a partial likelihood is required because ti,
+which has to be maximized to get the beta.est 
+The partial likelihood considers the time discrepencies in experience observations.
+Conceptually partial likelihood = risk attached to an individual / sum risks attached to all individual
+in sample.
+
+hi(t) = h0(t).exp(xi.beta) 
+with 
+	xi = 1 as sleep deprived rats & xi = 0 as sleepful
+	h0(t) = base risk, ok to ignore it
+---
+
+# A manually worked out, simple example: two groups
+
+## Load libraries
+```{r}
+library(reshape)
+library(maxLik)
+library(survival)
+```
+
+## Data definition
+
+Lets enter the data in R:
+```{r}
+dat <- data.frame(ratID = paste0("rat", 1:5),
+                  time = c(55, 50, 70, 120, 110),
+                  failure = c(0, 1, 1, 0, 1),
+                  group = c(0, 1, 0, 1, 1))
+```
+
+Total number of failures D:
+```{r}
+sum(dat$failure)
+```
+
+For convenience, rename 'group' to 'x':
+```{r}
+dat <- rename(dat, c(group = 'x'))
+dat
+```
+
+We also define an auxiliary data.frame containing events only:
+```{r}
+dat.events <- subset(dat, failure == 1)
+```
+
+## Partial log-likelihood function
+
+Lets define the partial (log-)likelihood function
+```{r}
+pLogLik <- function(beta) {
+  numerator <- with(dat.events, x * beta)
+  denominator <- rep(NA_real_, length(numerator))
+  for(j in seq_along(denominator)) {
+    risk_set <- subset(dat, time >= dat.events[j, "time"])
+    theta_j <- with(risk_set, exp(x * beta))
+    denominator[j] <- log(sum(theta_j))
+  }
+  return(sum(numerator - denominator))
+}
+```
+We work on the log scale again as more stable numerically transforming products into sums.
+risk_set: at a certain t, looking at the full sample set, identifying all the individuals that exceeds or are at least equal to the dat.events jth time, thus individuals still at risk.
+
+Debug to see:
+```{r}
+debugonce(pLogLik)
+pLogLik(2)
+```
+
+We can plot it:
+```{r}
+f <- Vectorize(pLogLik)
+curve(f, from = -4, to = 4)
+```
+
+## Maximum partial-Likelihood estimation
+```{r}
+fit.ML <- maxLik(pLogLik, start = c(beta = 0))
+summary(fit.ML)
+```
+positive beta : sleepful group takes longer to touche the object
+negative beta : sleep deprived group takes longer to touch the object (indication of stress)
+
+11:15:
+p-value is very large we cannot reject the hypothesis that says "beta = 0" 
+difference between group 0 & 1 is not statistically significant.
+Beta is in the end a numerical quantification of the difference between the 2 groups.
+The exp(beta) = h1(t)/h0(t) 
+the exponential of the beta equals to the ratio of the risk.
+
+With the `coxph` function that does all the analysis automatically:
+```{r}
+fit.cph <- coxph(Surv(time, failure) ~ x, data = dat)
+summary(fit.cph)
+```
+z-score = se(coef)/coef with coef = beta
+exp(coef) = 0.5774 means h1 the sleepful have 0.5774 times more risk to touch the object which corresponds to h0 the deprived ones taking more time to touch the object.
+
+We can reproduce the Likelihood-ratio test:
+```{r}
+LRT <- 2 * (fit.ML$maximum - pLogLik(0))
+data.frame(LRT = LRT,
+           pvalue = pchisq(LRT, df = 1, lower.tail = FALSE))
+```
+
+The Wald test is already in the `maxLik` summary output.
+
+# A manually worked out, simple example: one continuous covariate
+
+```{r}
+dat <- data.frame(time = c(6, 7, 10, 15, 19, 25),
+                  event = c(1, 0, 1, 1, 0, 1),
+                  age = c(67, 62, 34, 41, 46, 28))
+```
+
+```{r}
+fit <- coxph(Surv(time, event) ~ age, data = dat)
+summary(fit)
+```
+For 1 unit increase of the corresponding covariate, here 1 year increase in age, the ratio h1/h0 = 1.079
+Also provides a confidence interval.
+
+We might express age in decades:
+```{r}
+dat$age_dec <- dat$age / 10
+summary(coxph(Surv(time, event) ~ age_dec, data = dat))
+```
+We rescale the variable into age_dec from age/10.
+Gives new ratio results.
+
+# Case study: the pharmacoSmoking dataset
+
+## Load the data
+```{r}
+library(asaur)
+dat <- pharmacoSmoking
+head(dat)
+```
+
+## Fit the Cox model
+```{r}
+fit <- coxph(Surv(ttr, relapse) ~ grp + age + gender + priorAttempts, data = dat)
+summary(fit)
+```
+Continuous variables:
+  - age beta = -0.0220948: the older the patient gets, the lower the risk to go back to smoking again
+  - priorAttemptes beta = 0.0002078: the more the patient tried to quit smoking before, the higher the risk to go back to smoking again
+
+Categorical variables:
+  - Risk to go back smoking for patient with only nicotine patch is 1.7606 times higher than for combination cured
+  - genderMale beta = -0.1215514: males have a lower risk to go back smoking related to females
+
+Sutdying independently the variables is different from studying all together as the later takes into account all the covariates although they simplify when you make them equal each other in the formula.
+
+Expanding on categorical variables: "handling cat_vars"
+  - group {combination, patchOnly}
+  - x <- (group == "PO") + 0
+to convert the logical vector into a numerical one
+  - groupPO {0, 1}: indicator variable on patchOnly initial group
+What with a categorical variable with more than 2 levels ie. employment {ft, pt, other}: dummy variables
+  - employmentOther {0, 1}, employmentPt {0, 1}: you will get different betas one for dummy-implemented variable's level. employmentFt will be deductued when employementOther & employmentPt both = 0.
+employmentOther beta = Other/Ft & employmentPt beta = Pt/Ft
+
+```{r}
+fit <- coxph(Surv(ttr, relapse) ~ grp + employment, data = dat)
+summary(fit)
+```
+
+We can change the contrasts as we see fit:
+```{r}
+dat$grp <- relevel(dat$grp, ref = "patchOnly")
+fit <- update(fit)
+summary(fit)
+```
+
+## Exercise predict with Cox regression
+Note :
+With Cox Regression we do not specify the base line.
+
+```{r}
+d <- data.frame(patient = 1:6,
+                time = c(6, 7, 10, 15, 19, 25),
+                censored = c(1, 0, 1, 1, 0, 1),
+                age = c(67, 62, 34, 41, 46, 28))
+```
+
+```{r}
+fit <- coxph(Surv(time, censored)  ~age, data = d)
+pred <- survfit(fit, newdata = data.frame(age = c(20, 40, 60)))
+plot(pred, col =1:3)
+```
+Typically you're not interested in Cox prediction, you don't look to it. 
+However in a different sense, in terms of predicting risk instead of studying the survival, it is common practice to apply that kind of model.
+
+However a linear predictor might be interesting for other purposes like identifying new sample in situations in which we could precise protocols by ranking the scorings. Or identify a relative risk that does not require a baseline hazard as you rank the scores relative to each other.
+
+# Case study: the lung cancer dataset
+
+## Load the data
+```{r}
+library(survival)
+
+dat <- lung
+dat$sex <- factor(dat$sex)
+```
+originally sex was a numeric {0, 1} we forced to be categorical with factor() function.
+
+Sanity checks: 
+ - comparing variables from source file to data set created "dat"
+ - extracting some summary stats:
+```{r}
+summary(dat)
+```
+inst should be considered a string not a numerical although here specifically we don't care.
+Some missings for meal.cal (47) & wt.loss (14): basically drop variables with many missings or proceed through average or any other approach the moment you argument it (see missing values methodologies).
+
+```{r}
+table(dat$status)
+```
+165 events vs. 63 censoring status observations.
+We want it to be presented as {0, 1} where 0 is a censoring status and 1 is an actual event, here death:
+```{r}
+dat$event <- dat$status - 1
+with(dat, table(status, event))
+```
+Do a description of "event".
+
+Removing missing values:
+```{r}
+d1 <- subset(dat, select = c(time, event, age, sex, ph.ecog, ph.karno, pat.karno))
+d <- na.omit(d1)
+summary(d)
+```
+Select variables you plan on using and use function omit() that removes any variable that has NA anywhere.
+See no more NA values.
+You are done with data preparation.
+
+## Survival estimation
+```{r}
+fit.KM <- survfit(Surv(time,event) ~ 1, data = d)
+fit.KM
+```
+Median survival was 329 days (95% Confidence Interval: 286-364). In a sample of people with advanced lung cancer, you can expect that half will be dead within a year.
+
+## Impact of ph.ecog on Survival
+```{r}
+table(d$ph.ecog)
+```
+4 groups from good (0) to bad (3+). 
+Statistics on a 1-patient group seem shady so let's dicotomize the current groups to rearrange into 3 groups:
+```{r}
+d$ph.ecog_binary <- (d$ph.ecog > 0) + 0
+with(d, table(ph.ecog, ph.ecog_binary))
+```
+Returns {0, 1} and convert into numerical.
+Compared to original groups, we see every group > 0 has been concatenated into group 1.
+
+Measure impact:
+```{r}
+fit2 <- survfit(Surv(time, event) ~ ph.ecog_binary, data = d)
+fit2
+```
+
+plot it:
+```{r}
+plot(fit2, col = 1:2)
+```
+Red is highest score = worst performance with ph.ecog_binary > 0 and black is ph.ecog_binary == 0.
+Put labels. Comment: fits expectation? What do you see?
+Compare with other ph. only if it is justified: dozens of pages with copied/pasted code for each test is not necessary.
+
+## Nelson-AAlen estimators (optional, to compare with preceding sections)
+```{r}
+pred.NA <- survfit(Surv(time, status) ~ sex, data = dat, type = "fh")
+plot(pred.NA, col = 1:2)
+```
+
+Are these results statistically significant or is it just random:
+ - logrank test
+ - Cox regression
+are here to answer that question.
+
+## Tests
+Logrank:
+```{r}
+survdiff(Surv(time, event) ~ph.ecog_binary, data = d)
+```
+p-value < alpha does show a significant impact on survival (not radom).
+
+Cox regression:
+```{r}
+fit.cph <- coxph(Surv(time, event) ~ ph.ecog_binary, data = d)
+summary(fit.cph)
+```
+Positive beta significantly different from zero (p-value): positive effect of categorical variables on survival. ph.ecog_binary from 0 to 1 increases risk by 0.5443.
+ratio indicates the risk of death for a patient without ph.ecog_binary > 0 is 1.723 higher than patients with ph.ecog_binary = 0.
+Note :
+Ratio (exp(beta)) > 1.1 is something, > 1.3 is considerable, > 1.5 is large.
+WALD test (cph p-value) is consistent with Logrank test.
+
+## Cox regression: predictions
+```{r}
+fit.cph <- coxph(Surv(time, status) ~ sex, data = dat)
+
+pred.cph <- survfit(fit.cph, newdata = data.frame(sex = factor(1:2)),
+                    type = "aalen")
+
+plot(pred.cph, col = 1:2)
+```
+
+How does the proportional hazards assumption hold?
+```{r}
+plot(pred.NA, fun = "cloglog", col = 1:2)
+```
+
+```{r}
+plot(pred.cph, fun = "cloglog", col = 1:2)
+```
