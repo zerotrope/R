@@ -11,7 +11,7 @@ Statistical consulting
 The logrank test is non parametric. It assumes no specific distribution of the data, it does not
 care in a sense.
 
-17/10/2018 morning recap:
+2018 10 17 morning recap ----------------------------------------------------------------------------------------------------
 1 sample inference : KM, HF (survival::survfit)
 2 samples comparison : logrank + weighted variations (survival::survdiff)
 
@@ -49,8 +49,34 @@ With non-parametric right-censored data:
 With continuous and/or multiple covariates, right-censored data:
  - coxph
 
+2018 10 18 - 15" ----------------------------------------------------------------------------------------------------------
+plot Likelihood vs beta.
+Difference between supl(beta) with beta in theta0 and supl(beta) with beta = theta
+Thus 2.[supl(beta) in theta0 - supl(beta) in theta] = LRT
+l(beta;y)
+theta0 = null hypothesis subspace
+LRTn ~ Chi²(1) with 1 degree of freedom
+"to know the distribution of LRT, if you don't know their variance, you proceed to a t-test"
+
+plot beta1(group) vs beta2(age)
+so here theta = (beta1, beta2) in R² so THETA = R² (2 dimensions)
+With H0 : "beta1 = beta2 = 0" then
+ - THETA0 = {0, 0}
+ - LRT ~ Chi²(2)
+With H0 : "beta2 = 0" then
+ - THETA0 = { beta2 = 0 }a line
+ - LRT ~ Chi²(1)
+
+Recap Model Selection
+ - Lirelihood Ratio Test for nested models
+ - Akaike Information Criterion (AIC)
+ - Step function
+ - Concordance index (performance metric)
+ - Area Under the Curve (AUC)
+
 Check:
  - linear predictors
  - right-censored data
  - KM, HF
  - estimators
+ - AIC

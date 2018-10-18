@@ -13,6 +13,28 @@ hi(t) = h0(t).exp(xi.beta)
 with 
 	xi = 1 as sleep deprived rats & xi = 0 as sleepful
 	h0(t) = base risk, ok to ignore it
+
+Sum-up on TESTS:
+ - Logrank : comparing 2 groups, null hypothesis is "survival in group 1 equals survival in group 2" with
+ no assumptions at all and you don't get any quantification of the magnitude of the significance of the test;
+ - Stratified logrank test : as logrank, controlling for confounder (considering the effect of a covariate)
+ thus more specific in conditionning the variables and their influence on each other;
+ - Cox regression : compare 2+ groups, getting additionnally a ratio h1/h0 with the assumption that
+ the risks associated with both groups are proportional: 
+	- h1(t) = h0(t).lambda
+	- h1(t)/h0(t) = exp(beta) (does not depend on t)
+ you get the magnitude of the significance of the test with CPH.
+ 
+Recap (slide 81)
+Preliminary:
+ - identify what you are working with: time data with right-censored data or other things.
+When no censoring in data, MLE, logistic model, classic statistics methods are ok.
+With non-parametric right-censored data:
+ - 1 sample: KM, HF
+ - 2 samples: logrank, stratified logrank test
+With continuous and/or multiple covariates, right-censored data:
+ - coxph
+
 ---
 
 # A manually worked out, simple example: two groups

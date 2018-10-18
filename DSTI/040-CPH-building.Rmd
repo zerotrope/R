@@ -1,0 +1,407 @@
+---
+title: "Cox Model Building and Diagnostics"
+---
+
+plot Likelihood vs beta.
+Difference between supl(beta) with beta in theta0 and supl(beta) with beta = theta
+Thus 2.[supl(beta) in theta0 - supl(beta) in theta] = LRT
+l(beta;y)
+theta0 = null hypothesis subspace
+LRTn ~ Chi²(1) with 1 degree of freedom
+"to know the distribution of LRT, if you don't know their variance, you proceed to a t-test"
+
+plot beta1(group) vs beta2(age)
+so here theta = (beta1, beta2) in R² so THETA = R² (2 dimensions)
+With H0 : "beta1 = beta2 = 0" then
+ - THETA0 = {0, 0}
+ - LRT ~ Chi²(2)
+With H0 : "beta2 = 0" then
+ - THETA0 = { beta2 = 0 }a line
+ - LRT ~ Chi²(1)
+
+Recap Model Selection
+ - Lirelihood Ratio Test for nested models
+ - Akaike Information Criterion (AIC)
+ - Step function
+ - Concordance index (performance metric)
+ - Area Under the Curve (AUC)
+
+# Model building
+## Load the data
+
+```{r}
+library(survival)
+library(asaur)
+
+dat <- pharmacoSmoking
+```
+
+## The 4 candidate models
+```{r}
+M0 <- coxph(Surv(ttr, relapse) ~ 1, data = dat)
+MA <- coxph(Surv(ttr, relapse) ~ ageGroup4, data = dat)
+MB <- coxph(Surv(ttr, relapse) ~ employment, data = dat)
+MC <- coxph(Surv(ttr, relapse) ~ ageGroup4 + employment, data = dat)
+```
+
+## Comparing nested models: LRT
+```{r}
+anova(MA, MC)
+```
+
+## Comparing non-nested models: AIC
+```{r}
+fits <- list(MA = MA, MB = MB, MC = MC)
+sapply(fits, AIC)
+```
+
+```{r}
+AIC(MC)
+```
+
+
+## Automatic model selection based on AIC
+
+```{r}
+Mfull <- coxph(Surv(ttr, relapse) ~ grp + gender + race +
+                 employment + yearsSmoking + levelSmoking +
+                 ageGroup4 + priorAttempts + longestNoSmoke,
+               data = dat)
+```
+
+```{r}
+MAIC <- step(Mfull)
+```
+Measuring the AIC impact of suppressing a variable, backpropagation-style. The lower AIC the better.
+
+## Predictive power: concordance index
+
+```{r}
+summary(MA)
+```
+The model that includes age + employment is better (compare concordance levels).
+
+```{r}
+summary(MAIC)
+```
+ageGroup betas:
+ - ie. ageGroupe435-49 (a comparison of the 35-49 with younger groups) is just noise as pvalue 0.72
+ - ageGroup450-64 is -1 and significant
+ - ageGroup465+ not significant
+The highest risk group is the youngest (as comparison of a group with its younger closest is always negative)
+
+employment betas:
+ - emplouymentother 0.62 and significant
+ - employmentpt not significant
+ 
+Could be used to compare models as the higer the concordance the better the model is doing.
+ageGroup4 has been added:
+```{r}
+table(dat$ageGroup4)
+```
+
+## EXERCISE
+In the model MAIC from the notebook, estimate the Hazard Ratio comparing 65+, 35-49 and < 35 vs. 50-64 groups.
+
+## Predictive power: AUC
+
+```{r}
+library(survivalROC)
+data(mayo)
+```
+The higher the mayoscores the tougher the disease.
+
+
+```{r}
+plot(survfit(Surv(time / 365.25, censor) ~ 1, data = mayo))
+```
+
+```{r}
+ROC.4 <- survivalROC(Stime = mayo$time,
+                     status = mayo$censor,
+                     marker = mayo$mayoscore4,
+                     predict.time = 365.25 * 5,
+                     method="KM")
+ROC.5 <- survivalROC(Stime = mayo$time,
+                     status = mayo$censor,
+                     marker = mayo$mayoscore5,
+                     predict.time = 365.25 * 5,
+                     method = "KM")
+```
+I want to discriminate the people that are still alive after 5 years.
+
+```{r}
+ROC <- list(mayo4 = ROC.4, mayo5 = ROC.5)
+sapply(ROC, "[[", "AUC")
+```
+We are better discreminating mayo5 compared to mayo4 at 5 years.
+
+Protocole to extract vectors (lists) convert them in data.frames:
+```{r}
+dfl <- lapply(ROC, function(x) with(x, data.frame(FP, TP)))
+for(nm in names(dfl)) {
+  dfl[[ nm ]]$marker <- nm
+}
+dat <- do.call(rbind, dfl)
+```
+
+and plot them: 
+```{r}
+library(ggplot2)
+ggplot(dat, aes(FP, TP, color = marker)) +
+  geom_line() +
+  theme_bw(base_size = 9)
+```
+False Positive (FP) vds True Positive (TP) mayoscore5 overperforms mayoscore4, consistent with the AUC.
+
+Cph tests:
+```{r}
+fit.cph <- coxph(Surv(time, censor) ~ mayoscore5, data = mayo)
+summary(fit.cph)
+```
+Beta positive so mayoscore5 positively and significantly associated to survival.
+
+a) mayoscore5 is associated with survival (pvalue significative);
+b) direction is positive: the higher score the higher the risk so the shorter the living time, for every increment of mayoscore5, the hazard ratio increases by 2.721 (or the log(hazard ratio) increases by 1.00086);
+c) what about mayoscore4:
+```{r}
+fit2.cph <- coxph(Surv(time, censor) ~ mayoscore4, data = mayo)
+summary(fit2.cph)
+```
+a) same mayoscore positively and significantly associated to survival.
+b) direction is positive: for every increase in mayoscore4, the hazard ratio increases by 2.719.
+
+HIstograms
+```{r}
+hist(mayo$mayoscore5)
+hist(mayo$mayoscore4)
+```
+Here both scores have same scale, however generally speaking the scale of the viability of you marker impacts directly your interpretation of the impact on hazard ratio.
+How to make these more comparable, by standardizing it through standard deviation: 
+  score = score/sd(score)
+
+Standardizing:
+```{r}
+sdScore4 <- mayo$mayoscore4/sd(mayo$mayoscore4)
+sdScore5 <- mayo$mayoscore5/sd(mayo$mayoscore5)
+```
+
+Re-testing:
+```{r}
+sd.fit <- coxph(Surv(time, censor) ~ sdScore5, data = mayo)
+summary(sd.fit)
+```
+
+```{r}
+sd.fit2 <- coxph(Surv(time, censor) ~ sdScore4, data = mayo)
+summary(sd.fit)
+```
+Impact is much higher once normalized for both mayoscores.
+
+## EXERCISE AUC
+Impose a cut-off on the False Positives
+```{r}
+cutoff <- with(ROC$mayo5, min(cut.values[FP <= 0.1]))
+cutoff
+```
+
+Make a binary with the newly created cut-off as trigger
+```{r}
+mayo$prediction <-
+  ifelse(mayo$mayoscore5 <= cutoff,
+         "low_risk", "high_risk")
+```
+
+```{r}
+plot(survfit(Surv(time/365, censor) ~ prediction, data = mayo),
+     col = c("red", "blue"))
+```
+
+# Model diagnostics
+
+## Martingale residuals
+14:50
+```{r}
+library(survival)
+library(asaur) ## dataset
+
+data(pharmacoSmoking)
+dat <- pharmacoSmoking
+```
+
+```{r}
+fit <- coxph(Surv(ttr, relapse) ~ grp + age + employment, data = dat)
+dat$residual <- residuals(fit, type = "martingale")
+```
+
+```{r}
+par(mfrow = c(1, 3), mar = c(4.2, 2, 2, 2))
+with(dat, {
+
+  plot(age, residual)                           # scatter plot
+  lines(lowess(age, residual), lwd = 2)         # + smoothing lines
+
+  plot(residual ~ grp)                          # boxplot (categorical variable)
+
+  plot(residual ~ employment)                   # boxplot (categorical variable)
+
+})
+```
+As per shown, the line indicates that including age as a linear term in the model was not a good idea and that maybe a quadratic curve would have yield to a better result.
+
+## Case deletion residuals
+Diagnostics is also about identifying highly impacting outliers and single observations on the statistics you run on your data set.
+
+```{r}
+dfbetas <- residuals(fit, type = 'dfbetas')
+dat$dfbetas <- sqrt(rowSums(dfbetas^2))
+```
+dfbetas is a matrix for the 4 individuals with change in respective betas (1, 2, 3 & 4) at every iteration.
+rowSums computes the sum row by row.
+
+```{r}
+plot(dat$dfbetas, type = 'h')
+abline(h = 0)
+```
+Allows to identify outliers whereas due to errors in data entry or that an individual does not fit into the data set.
+
+## Proportionality of hazards
+
+Pancreatic cancer dataset
+```{r}
+library(survival)
+library(asaur) ## dataset
+library(plyr)
+library(ggplot2)
+
+data(pancreatic)
+dat <- pancreatic
+
+fmt <- "%m/%d/%Y"
+dat <- within(dat, {
+  onstudy <- as.Date(as.character(onstudy), format = fmt)
+  progression <- as.Date(as.character(progression), format = fmt)
+  death <- as.Date(as.character(death), format = fmt)
+  OS <- death - onstudy
+  PFS <- pmin(progression - onstudy, OS)
+  PFS[is.na(PFS)] <- OS[is.na(PFS)]
+  PFS <- Surv(as.numeric(PFS / 30.5))
+  OS <- Surv(as.numeric(OS / 30.5))
+})
+```
+
+```{r}
+fit <- coxph(PFS ~ stage, data = dat)
+summary(fit)
+```
+
+
+```{r}
+fit.KM <- survfit(PFS ~ stage, data = dat)
+plot(fit.KM, fun= "cloglog", col = 1:2)
+```
+
+
+```{r}
+fit.KM <- survfit(Surv(ttr, relapse) ~ grp, data = pharmacoSmoking)
+
+plot(fit.KM, fun = "cloglog", col = 1:2)
+```
+
+### Schoenfeld residuals
+```{r}
+fit <- coxph(PFS ~ stage, data = dat)
+residual.sch <- cox.zph(fit)
+residual.sch
+```
+This is bad, there is a deviation from proportionality of hazard.
+
+```{r}
+plot(residual.sch)
+```
+Is it a big deal? Here yes as a matter of communicating the results and the topic the data set is about, pancreatic cancer.
+Two ways to deal with this situation:
+ - stratified Cox regression
+ - truncation
+
+# Dealing with assumptions violations
+
+## Stratification
+
+```{r}
+library(asaur)
+d <- pharmacoSmoking
+d$employment <- ifelse(d$employment == "ft", "ft", "other")
+
+table(d$employment)
+```
+
+Stratified Cox model:
+```{r}
+fit <- coxph(Surv(ttr, relapse) ~ grp + strata(employment), data = d)
+
+summary(fit)
+```
+Note how there is no estimate associated with 'employment'.
+
+## Truncation
+
+```{r}
+library(asaur)
+library(survival)
+d <- pancreatic2
+
+plot(survfit(Surv(pfs, status) ~ stage, data = d), col = 1:2)
+```
+
+THIS IS *NOT* HOW IT IS DONE:
+```{r}
+d_WRONG <- subset(d, pfs <= 180)
+
+plot(survfit(Surv(pfs, status) ~ stage, data = d_WRONG), col = 1:2)
+```
+
+Here is how you do it:
+```{r}
+d_RIGHT <- within(d, {
+  status_truncated <- ifelse(pfs > 180, 0, status)
+  pfs_truncated <- ifelse(pfs > 180, 180, pfs)
+})
+```
+
+```{r}
+plot(survfit(Surv(pfs_truncated, status_truncated) ~ stage, data = d_RIGHT),
+     col = 1:2)
+```
+
+```{r}
+plot(survfit(Surv(pfs_truncated, status_truncated) ~ stage, data = d_RIGHT),
+     fun = "cloglog",
+     col = 1:2)
+```
+
+```{r}
+summary(coxph(Surv(pfs_truncated, status_truncated) ~ stage, data = d_RIGHT))
+```
+
+## Psplines
+
+```{r}
+library(asaur)
+library(survival)
+dat <- pharmacoSmoking
+
+fit <- coxph(Surv(ttr, relapse) ~ grp + employment + age, data = dat)
+
+summary(fit)
+```
+
+```{r}
+fit1 <- coxph(Surv(ttr, relapse) ~ grp + employment + pspline(age, df = 4), data = dat)
+
+summary(fit1)
+```
+
+```{r}
+termplot(fit1, term = 3, se = TRUE)
+```
