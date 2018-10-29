@@ -101,6 +101,7 @@ Check:
  - AIC
 
 PROJECT PLAN ---------------------------------------------------------------------------------------------------------------
+
 i   data prep
 ii  exploratory analysis
 iii tests

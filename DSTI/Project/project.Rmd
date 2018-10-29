@@ -1,0 +1,122 @@
+---
+title:      "Survival Analysis project - Spring 18"
+authors:    Mélanie 
+            Pras
+            Lucas
+---
+Steps
+ - isolate 106 cases
+ - residual NAs <- predict (lm)
+ - exploratory/questions
+
+Questions
+ - treatment or not
+ - global cox on all parameters
+ - isolate significative parameters
+ - generate model
+ - predict NAs survival
+ 
+Check
+ - cholesterol vs. age???
+
+# Data preparation
+
+    Variable    Description
+    ----------  -----------------------------------
+    age:        in years
+    albumin:	  serum albumin (g/dl)
+    alk.phos:	  alkaline phosphotase (U/liter)
+    ascites:	  presence of ascites
+    ast:	      aspartate aminotransferase, once called SGOT (U/ml)
+    bili:	      serum bilirunbin (mg/dl)
+    chol:	      serum cholesterol (mg/dl)
+    copper:	    urine copper (ug/day)
+    edema:	    0 no edema, 0.5 untreated or successfully treated
+                1 edema despite diuretic therapy
+    hepato:	    presence of hepatomegaly or enlarged liver
+    id:	        case number
+    platelet:	  platelet count
+    protime:	  standardised blood clotting time
+    sex:	      m/f
+    spiders:	  blood vessel malformations in the skin
+    stage:	    histologic stage of disease (needs biopsy)
+    status:	    status at endpoint, 0/1/2 for censored, transplant, dead
+    time:	      number of days between registration and the earlier of death,
+                transplantion, or study analysis in July, 1986
+    trt:	      1/2/NA for D-penicillmain, placebo, not randomised
+    trig:	      triglycerides (mg/dl)
+    ----------  -----------------------------------
+
+## Libraries importation
+```{r}
+library(ggplot2)
+library(readr)
+library(glmnet)
+library(survival)
+?pbc
+```
+
+## Data visualizations
+```{r}
+head(pbc)
+summary(pbc)
+hist(pbc$stage)
+table(pbc$stage)
+```
+
+## Specify event as status == "death"
+```{r}
+data <- pbc
+data$event <- 0 + (data$status == 2)
+summary(data)
+table(data$status)
+table(data$event)
+```
+
+## Isolate train data (312 observations) & test data (106 isolated cases that did not take any treatment)
+```{r}
+test <- subset(data, is.na(data$trt))
+train <- subset(data, data$trt != "NA")
+summary(data)
+```
+
+## Treat lasting NAs in the train data set by predicting them linearly (vs. age)
+```{r}
+# cholesterol
+fit.chol <- (lm(chol ~ age, data = train))
+train$chol[is.na(train$chol)] <-
+  predict(fit.chol, newdata = subset(train, is.na(chol)))
+# copper
+fit.copper <- (lm(copper ~ age, data = train))
+train$copper[is.na(train$copper)] <-
+  predict(fit.copper, newdata = subset(train, is.na(copper)))
+# trig
+fit.trig <- (lm(trig ~ age, data = train))
+train$trig[is.na(train$trig)] <-
+  predict(fit.trig, newdata = subset(train, is.na(trig)))
+# platelet
+fit.platelet <- (lm(platelet ~ age, data = train))
+train$platelet[is.na(train$platelet)] <-
+  predict(fit.platelet, newdata = subset(train, is.na(platelet)))
+
+summary(train)
+```
+By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment (peniciillmain vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the other hand, additionally to habing managed the residual NAs contained in the train test for full data cleansing we allow ourself to proceed to exploratory analysis.
+
+# Exploratory analysis
+
+## integrate a dependent variable y as the survival in months to data set
+```{r}
+train$y <- with(train, Surv(time / 30.5, event))
+head(train)
+summary(train$y)
+```
+
+
+!!!!!!!!!
+## Kaplan-Meyer estimator
+```{r}
+survfit(Surv(time, status) ~ 1, data = train)
+```
+
+
