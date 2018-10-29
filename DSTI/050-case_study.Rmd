@@ -1,0 +1,216 @@
+---
+title: "A Complete Case Study: the Lung Cancer dataset"
+---
+
+# Data preparation
+
+```{r}
+library(survival)
+
+?lung
+```
+
+```{r}
+table(lung$inst)
+```
+
+```{r}
+nrow(lung)
+```
+
+```{r}
+d <- lung
+d$event <- 0 + (d$status == 2)
+summary(d)
+```
+
+```{r}
+d$inst <- factor(d$inst)
+summary(d)
+```
+
+```{r}
+d$sex <- factor(d$sex, levels = 1:2, labels = c("male", "female"))
+summary(d)
+```
+
+Impute some missing values
+```{r}
+fit.meal <- lm(meal.cal ~ sex, data = d)
+summary(fit.meal)
+```
+
+```{r}
+d$meal.cal[is.na(d$meal.cal)] <-
+  predict(fit.meal, newdata = subset(d, is.na(meal.cal)))
+summary(d)
+```
+
+
+```{r}
+d$wt.loss[is.na(d$wt.loss)] <-
+  predict(lm(wt.loss ~ age + sex, data = d), newdata = subset(d, is.na(wt.loss)))
+summary(d)
+```
+
+
+One sample has no 'institute'??
+```{r}
+subset(d, is.na(inst))
+```
+
+```{r}
+d$y <- with(d, Surv(time / 30.5, event))
+summary(d)
+```
+
+```{r}
+head(d)
+```
+
+# Exploratory analysis
+
+```{r}
+survfit(y ~ 1, data = d)
+survfit(y ~ sex, data = d)
+```
+
+```{r}
+str(d)
+table(d$ph.ecog)
+survfit(y ~ ph.ecog, data = d)
+```
+
+```{r}
+hist(d$age)
+```
+
+```{r}
+d$ageCat <- cut(d$age, breaks = c(0, 50, 70, Inf))
+table(d$ageCat)
+survfit(y ~ ageCat, data = d)
+```
+
+```{r}
+table(d$ph.karno)
+table(d$pat.karno)
+survfit(y ~ ph.karno, data = d)
+survfit(y ~ pat.karno, data = d)
+```
+
+```{r}
+hist(d$meal.cal)
+```
+
+```{r}
+survfit(y ~ I(meal.cal < 800), data = d)
+```
+
+```{r}
+stem(d$wt.loss)
+survfit(y ~ I(wt.loss > 0), data = d)
+stem(d$ph.karno)
+stem(d$meal.cal)
+survfit(y ~ I(meal.cal < 800), data = d)
+stem(d$wt.loss)
+```
+
+# Comparing 2 groups
+```{r}
+survdiff(y ~ I(wt.loss > 0), data = d)
+survdiff(y ~ ageCat, data = d)
+survdiff(y ~ sex, data = d)
+survdiff(y ~ I(wt.loss > 0), data = d)
+survdiff(y ~ I(meal.cal < 800), data = d)
+survdiff(y ~ ph.ecog, data = d)
+survdiff(y ~ ph.karno, data = d)
+```
+
+# Data Modeling and Machine
+
+## Models training
+```{r}
+load("lung.RData")
+d1 <- lung
+fit <- coxph(y ~ ., data = d1)
+summary(fit)
+```
+
+### model 1. AIC-STEP : backward propagation
+```{r}
+fit.aic <- step(fit)
+summary(fit.aic)
+b.aic <- coef(fit.aic)
+```
+
+### model 2. manual
+```{r}
+fit.manual <- coxph(y ~ sex + ph.ecog + pat.karno + wt.loss, data = d1)
+b.manual <- coef(fit.manual)
+```
+Selection criterion is my own expertise. I believe the mentionned variables are the ones that relates the better to cancer.
+
+### model 3. elastic net cox regression
+```{r}
+library(glmnet)
+X <- model.matrix(y ~ ., data = d1)[, -1]
+str(X)
+head(X)
+y <- d1$y
+fit <- cv.glmnet(X, y, family = "cox")
+b.enet.all <- coef(fit, s = "lambda.min")
+b.enet <- b.enet.all[b.enet.all != 0]
+names(b.enet) <- colnames(X)[as.logical(b.enet.all != 0)]
+```
+We give all the features. Although there only 5-6 features we still can run a penalization through elastic net.
+
+Created these variables:
+```{r}
+b.enet
+```
+
+### model 4. CCP - Compound covariates predictor
+```{r}
+library(plyr)
+library(broom)
+fits <- adply(X, 2, function(x) tidy(coxph(y ~ x)))
+print(fits)
+str(fits)
+b.CCP <- with(fits, structure(estimate, names = as.character(X1)))
+```
+You have a number of features (whatever) against an outcome you fit models with one feature at a time and collect all the betas from all univariate models and use them altogether to make a prediction.
+Tidy cleans up the analysis and creates a matrix in a nice shape you run on a model resul, here tidy(coxph()) for example.
+
+```{r}
+B <- list(manual = b.manual, aic = b.aic, enet = b.enet[b.enet != 0], CCP = b.CCP)
+B
+```
+
+### Model testing
+```{r}
+lincom <- function(b, X) rowSums(sweep(X[, names(b), drop = FALSE], 2, b, FUN = "*"))
+```
+
+```{r}
+load("lung_newdata.RData")
+X.new <- model.matrix(y ~ . - 1, lung_newdata)
+y <- lung_newdata$y
+```
+
+```{r}
+scores <- llply(B, function(b) lincom(b, X.new))
+```
+
+for each score we use the survivalRoc function.
+```{r}
+comparisons_cox <- ldply(scores, function(s) tidy(coxph(y ~ I(s/sd(s)))))
+comparisons_cox
+```
+
+```{r}
+library(survivalROC)
+comparisons_AUC <- laply(scores, function(s) survivalROC(y[, 1], y[, 2], s, predict.time = 12, method = "KM")$AUC)
+names(comparisons_AUC) <- names(scores)
+comparisons_AUC
+```
+CCP : take all your features and estimate beta for each of them one by one giving you a univariate regression and beta for each feature. Here it is the one that works best in terms of AUC, beatting the enet. This kind of model typically is the first benchmark that you'll go competing with. In the medical field it constitutes a baseline that it is hard to beat.

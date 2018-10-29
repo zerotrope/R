@@ -1,0 +1,77 @@
+---
+title:      "Survival Analysis project - Spring 18"
+authors:    Mélanie 
+            Pras
+            Lucas
+---
+Steps
+ - isolate 106 cases
+ - residual NAs <- predict (lm)
+ - exploratory/questions
+
+Questions
+ - treatment or not
+ - global cox on all parameters
+ - isolate significative parameters
+ - generate model
+ - predict NAs survival
+ 
+Check
+ - cholesterol vs. age???
+
+# Data preparation
+## Libraries importation
+```{r}
+library(ggplot2)
+library(readr)
+library(glmnet)
+library(survival)
+?pbc
+```
+
+## Data visualization
+```{r}
+head(pbc)
+summary(pbc)
+hist(pbc$stage)
+table(pbc$stage)
+```
+
+```{r}
+data <- pbc
+data$event <- 0 + (data$status == 2)
+summary(data)
+table(data$status)
+table(data$event)
+```
+
+## Isolate train data (312 observations) & test data (106 isolated cases that did not take any treatment)
+```{r}
+test <- subset(data, is.na(data$trt))
+train <- subset(data, data$trt != "NA")
+summary(data)
+```
+
+## Treat lasting NAs in the train data set by predicting them linearly (vs. age)
+```{r}
+# cholesterol
+fit.chol <- (lm(chol ~ age, data = train))
+train$chol[is.na(train$chol)] <-
+  predict(fit.chol, newdata = subset(train, is.na(chol)))
+# copper
+fit.copper <- (lm(copper ~ age, data = train))
+train$copper[is.na(train$copper)] <-
+  predict(fit.copper, newdata = subset(train, is.na(copper)))
+# trig
+fit.trig <- (lm(trig ~ age, data = train))
+train$trig[is.na(train$trig)] <-
+  predict(fit.trig, newdata = subset(train, is.na(trig)))
+# platelet
+fit.platelet <- (lm(platelet ~ age, data = train))
+train$platelet[is.na(train$platelet)] <-
+  predict(fit.platelet, newdata = subset(train, is.na(platelet)))
+
+summary(train)
+```
+
+# Exploratory analysis

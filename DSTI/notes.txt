@@ -11,7 +11,7 @@ Statistical consulting
 The logrank test is non parametric. It assumes no specific distribution of the data, it does not
 care in a sense.
 
-2018 10 17 morning recap ----------------------------------------------------------------------------------------------------
+2018 10 17 Morning recap ----------------------------------------------------------------------------------------------------
 1 sample inference : KM, HF (survival::survfit)
 2 samples comparison : logrank + weighted variations (survival::survdiff)
 
@@ -64,7 +64,7 @@ With H0 : "beta1 = beta2 = 0" then
  - THETA0 = {0, 0}
  - LRT ~ Chi²(2)
 With H0 : "beta2 = 0" then
- - THETA0 = { beta2 = 0 }a line
+ - THETA0 = { beta2 = 0 } a line
  - LRT ~ Chi²(1)
 
 Recap Model Selection
@@ -74,9 +74,36 @@ Recap Model Selection
  - Concordance index (performance metric)
  - Area Under the Curve (AUC)
 
+2018 10 19 - Morning recap ------------------------------------------------------------------------------------------------
+- First
+- Strata
+- Diagnostics: what to do if hypothesis of proportionality of hazards does not hild? If it doesn't matter you ignore it otherwise
+	- Cox stratification
+	- truncation: cut the sample to simplify the observations and see if the differences significant or not (if they are due
+to hazard or not).
+
+Penalized regression
+when lots of features (millions?) compared to sample size. We impose constraints on the beta, bounding it to
+do not exceed some threshold c. This is due to the fact that when the number of features p > the number operations n, the beta 
+that maximizes the MLE goes +inf. 
+ - glmnet(x, y, fmily ="cox")
+It allows to identify the "trajectories" of the betas.
+Cross validation allows you to identify what threshold level should I settle.
+
+Exercise:
+Use Cox regression to assess if body temperature impacts time of hospitalization from hospitalization.csv
+
 Check:
  - linear predictors
  - right-censored data
  - KM, HF
  - estimators
  - AIC
+
+PROJECT PLAN ---------------------------------------------------------------------------------------------------------------
+i   data prep
+ii  exploratory analysis
+iii tests
+	- logrank
+	- stratified logrank
+	- cox regression
