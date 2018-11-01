@@ -142,8 +142,8 @@ With 2 time ranges, in days as by default in the data set and in months as compu
 ```{r}
 survdays <- Surv(train$time, train$death)
 survmonths <- Surv(train$time / 30.5, train$death)
-survdays
-survmonths
+#survdays
+#survmonths
 ```
 
 ## Kaplan-Meyer estimator
