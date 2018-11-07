@@ -4,27 +4,19 @@ authors:    Melanie
             Pras
             Lucas
 ---
-Steps
- - isolate 106 cases
- - residual NAs <- predict (lm)
- - exploratory/questions
 
-Questions
- - treatment or not
- - global cox on all parameters
- - isolate significative parameters
- - generate model
- - predict NAs survival
- 
-Check
- - cholesterol vs. age???
- 
 Steps 
- - drop les predict actuels
- - split data set 312 : train(70%) validation(30%)
+ - CHECK // drop les predict actuels
+ - CHECK // split data set 312 : train(70%) validation(30%)
+ - CHECK // predict treatment on validation set with linear model
  - predict event death : test R² ou MAPE pour validation du modèle
- - predict sur les 106
- - check logrank curves pour trancate (juste un commentaire à faire), check jour Antonio Truncation video
+ - predict sur les 106 test set
+ - concatene tout le dataset complet (train+valid+test)
+ - KM + logrank = interprétation
+ - check logrank curves pour troncate (juste un commentaire à faire), check jour Antonio Truncation video
+ - chain les coxph pour identifier les variables significatives
+ - analyse de résiduals
+ - bonus: comparaison de modèles
  
 -------------------------------------------------------------------------
 
@@ -87,20 +79,14 @@ library(survival)
 
 ## Specify event as status == "death"
 
-Declare data importation and event association to death of the patient.
-
-/*
-  transplantation cases will not be of concerned in the context of a survival
-  survival analysis, stricto sensu.
-*/
+Declare data importation and event association to the death of the patient.
+Transplantation cases will not be of concerned in the context of a survival survival analysis, stricto sensu.
 
 ```{r}
+# assign data set to a labelled object
 data <- pbc
+# create death related event parameter
 data$death <- 0 + (data$status == 2)
-data$transp <- 0 + (data$status == 1)
-#summary(data)
-#table(data$status)
-#table(data$event)
 ```
 
 ## Convert all categorical data of the data set
@@ -112,53 +98,80 @@ data$stage <- factor(data$stage)
 data$ascites <- factor(data$ascites)
 data$edema <- factor(data$edema)
 data$spiders <- factor(data$spiders)
-
-#summary(data)
 ```
 
 ## Create age intervals
 
 ```{r}
+hist(data$age)
 data$ageGroup <- cut(data$age, breaks = c(0,10,20,30,40,50,60,70,80,90,Inf))
-hist(ageGroup)
-#summary(data)
+table(data$ageGroup)
 ```
 
-## Isolate train data (312 observations) & test data (106 isolated cases that did not take any treatment)
-
-```{r}
-test <- subset(data, is.na(data$trt))
-train <- subset(data, data$trt != "NA")
-
-#summary(data)
-#summary(test)
-#summary(train)
-```
-
-## Treat lasting NAs in the train data set by predicting them linearly (vs. age)
+## Input some missing values
 
 ```{r}
 # cholesterol
-fit.chol <- (lm(chol ~ age, data = train))
-train$chol[is.na(train$chol)] <-
-  predict(fit.chol, newdata = subset(train, is.na(chol)))
+fit.chol <- (lm(chol ~ age, data = data))
+data$chol[is.na(data$chol)] <-
+  predict(fit.chol, newdata = subset(data, is.na(chol)))
 # copper
-fit.copper <- (lm(copper ~ age, data = train))
-train$copper[is.na(train$copper)] <-
-  predict(fit.copper, newdata = subset(train, is.na(copper)))
+fit.copper <- (lm(copper ~ age, data = data))
+data$copper[is.na(data$copper)] <-
+  predict(fit.copper, newdata = subset(data, is.na(copper)))
 # trig
-fit.trig <- (lm(trig ~ age, data = train))
-train$trig[is.na(train$trig)] <-
-  predict(fit.trig, newdata = subset(train, is.na(trig)))
+fit.trig <- (lm(trig ~ age, data = data))
+data$trig[is.na(data$trig)] <-
+  predict(fit.trig, newdata = subset(data, is.na(trig)))
 # platelet
-fit.platelet <- (lm(platelet ~ age, data = train))
-train$platelet[is.na(train$platelet)] <-
-  predict(fit.platelet, newdata = subset(train, is.na(platelet)))
-
-#summary(train)
+fit.platelet <- (lm(platelet ~ age, data = data))
+data$platelet[is.na(data$platelet)] <-
+  predict(fit.platelet, newdata = subset(data, is.na(platelet)))
+# check if NAs have been properly predicted
+summary(data)
 ```
 
-By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment (peniciillmain vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow ourself to proceed to exploratory analysis.
+## Generate train, validation & test sets
+
+Train (70%) and validation (30%) sets from the original 312 observations of patients that were treated. Test set to be the 106 observations of patients reporting their data that never enrolled into treatment protocol and for which we aim to predict their corresponding protocol through our model elaborated on train & validate sets.
+
+```{r}
+# set the split proportion between train & validate sets, here 70% & 30% respectively
+share = c(train = .7, validate = .3)
+# create split function
+g = sample(cut(
+  seq(nrow(subset(data, data$trt != "NA"))), 
+  nrow(subset(data, data$trt != "NA"))*cumsum(c(0,share)),
+  labels = names(share)
+))
+# apply split function on treated patients data set
+protocol = split(subset(data, data$trt != "NA"), g)
+# assign each set to clearly labelled objects
+train <- protocol$train
+validate <- protocol$validate
+test <- subset(data, is.na(data$trt))
+# check if split properly
+addmargins(prop.table(table(g)))
+```
+
+/*
+  protocol <- subset(data, data$trt != "NA")
+  test <- subset(data, is.na(data$trt))
+*/
+
+## Fitting a linear model to our train set
+
+```{r}
+fit.train <- (lm(death ~ trt, data = train))
+validate$predict.lm <- predict(fit.train, newdata = validate)
+```
+
+```{r}
+head(validate)
+summary(validate)
+```
+
+By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment (Dpenicillamine vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow ourself to proceed to exploratory analysis.
 
 # Exploratory analysis
 
@@ -166,10 +179,8 @@ By having separated the complete pbc data set into one train set of the 312 obse
 
 ```{r}
 train$y <- with(train, Surv(time / 30.5, death))
-train$z <- with(train, Surv(time / 30.5, transp))
 head(train)
 summary(train$y)
-summary(train$z)
 ```
 
 ## Create survival objects
