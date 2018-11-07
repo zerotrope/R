@@ -6,19 +6,22 @@ authors:    Melanie
 ---
 
 Steps 
- - CHECK // drop les predict actuels
- - CHECK // split data set 312 : train(70%) validation(30%)
- - CHECK // predict treatment on validation set with linear model
- - predict event death : test R² ou MAPE pour validation du modèle
- - predict sur les 106 test set
- - concatene tout le dataset complet (train+valid+test)
- - KM + logrank = interprétation
+ - DONE // drop les predict actuels
+ - DONE // split data set 312 : train(70%) validation(30%)
+ - DONE // predict treatment on validation set with linear model
+ - FIX // predict event death : test R² ou MAPE pour validation du modèle
+ - FIX // predict sur les 106 test set
+ - FIX // concatene tout le dataset complet (train+valid+test)
+ - DONE // KM estimator 
+ - Plot logrank curves
+ - Plot cox baselin curves
  - check logrank curves pour troncate (juste un commentaire à faire), check jour Antonio Truncation video
  - chain les coxph pour identifier les variables significatives
  - analyse de résiduals
  - bonus: comparaison de modèles
  
 Questions
+ - intégrer les 19 patients transplantés dans les censurés?
  - coxph au début pour identifier les paramètres significatifs?
  - interprétation MAPE & R²?
  - on veut prédire le traitement ou la mort des 106?
@@ -136,106 +139,20 @@ data$platelet[is.na(data$platelet)] <-
 summary(data)
 ```
 
-## Generate train, validation & test sets
-
-Train (70%) and validation (30%) sets from the original 312 observations of patients that were treated. Test set to be the 106 observations of patients reporting their data that never enrolled into treatment protocol and for which we aim to predict their corresponding protocol through our model elaborated on train & validate sets.
-
-```{r}
-# set the split proportion between train & validate sets, here 70% & 30% respectively
-share = c(train = .7, validate = .3)
-# create split function
-g = sample(cut(
-  seq(nrow(subset(data, data$trt != "NA"))), 
-  nrow(subset(data, data$trt != "NA"))*cumsum(c(0,share)),
-  labels = names(share)
-))
-# apply split function on treated patients data set
-protocol = split(subset(data, data$trt != "NA"), g)
-# assign each set to clearly labelled objects
-train <- protocol$train
-validate <- protocol$validate
-test <- subset(data, is.na(data$trt))
-# check if split properly
-addmargins(prop.table(table(g)))
-```
-
-/*
-  protocol <- subset(data, data$trt != "NA")
-  test <- subset(data, is.na(data$trt))
-*/
-
-## Fitting a linear model to our train set
-
-```{r}
-fit.train.linear <- (lm(event ~ trt, data = train))
-validate.linear <- as.numeric(predict(fit.train.linear, newdata = validate))
-summary(fit.train.linear)
-```
-
-## Measure of prediction accuracy through "R-squared"
-
-```{r}
-validate.linear.Rsquared <- summary(fit.train.linear)$r.squared
-validate.linear.AdjRsquared <- summary(fit.train.linear)$adj.r.squared
-```
-
-Both close to 0.
-
-## Measure of prediction accuracy through "Mean Absolute Percentage Error"
-
-```{r}
-actual <- as.numeric(c(validate$trt))
-str(actual)
-str(validate.linear)
-```
-
-```{r}
-mape <- function(y, yhat)
-{
-  mean(abs((y - yhat)/y))
-}
-validate.linear.mape <- mape(actual, validate.linear)
-```
-
-Returning a MAPE score of c. 0.68.
-
-## Fitting a logistic regression model to our train set & prediction on our validation set
-
-```{r}
-fit.train.logistic <- glm(event ~ trt, data = train, family = 'binomial')
-validate.logistic <- as.numeric(predict(fit.train.logistic, newdata = validate))
-summary(fit.train.logistic)
-```
-
-## Measure of prediction accuracy through "Mean Absolute Percentage Error"
-
-```{r}
-validate.logistic.mape <- mape(actual, validate.logistic)
-```
-
-Returning a MAPE score of c. 1.25
-
-/*
-  By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment   (Dpenicillamine vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the    other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow     ourself to proceed to exploratory analysis.
-*/
-
-## Predictions on the test set
-
-```{r}
-# linear predictions
-# logistic predictions
-# on what??
-```
-
 # Exploratory analysis
 
-## integrate a dependent variable y as the survival in months to data set
+## Locate patients for survival analysis
+
+Our patient's type-profile encompasses : 
+ - patients that followed a treatment, thus excluding the 106 patients that did not;
+ - patients concerned by the event of their death or consored, thus excluding the patients that were transplanted
 
 ```{r}
-train$y <- with(train, Surv(time / 30.5, event))
-head(train)
-summary(train$y)
+specimen <- subset(data, data$trt != "NA" & data$status != 1)
+summary(specimen)
 ```
+
+Getting a 293 observations data set on which we will run the survival analysis related tests as below.
 
 ## Create survival objects
 
@@ -251,11 +168,11 @@ In the situation where status returns more than two modalities or if the modalit
 */
 
 ```{r}
-survdays <- Surv(train$time, train$event)
-#survmonths <- Surv(train$time / 30.5, train$event)
-#survdays
-#survmonths
+survival <- Surv(specimen$time / 365.25, specimen$event)
+
 ```
+
+Hereby computed with time alteration to show yearly-basis scale for lisibility purpose of the reader.
 
 ## Kaplan-Meyer estimator - estimation of the survival function
 
@@ -264,23 +181,21 @@ It is similar to the censoring version of empirical survival function, generatin
 In R, the estimation of a survival function through the use of a survival object (ie. from censored data) is done thanks to the survfit(Surv(time, status), data) function of the "survival" package.
 
 ```{r}
-KMdays <- survfit(survdays ~ 1, data = train)
-KMmonths <- survfit(survmonths ~ 1, data = train)
-plot(KMdays)
-plot(KMmonths)
+KM <- survfit(survival ~ 1, data = specimen)
+KM
+plot(KM, xlab="Survival Years", ylab="Kaplan-Meyer Estimator")
 ```
 
 ## Mantel-Haenzel test - comparing two groups' own survival
 
-Also known as log-rank test, it is a statistical hypothesis test that tests the null hypothesis that survival curves of two populations do not differ. It will output an indicator of the two groups veing significantly different in terms of survival when its p-value will be inferior to risk threshold.
+Also known as log-rank test, it is a statistical hypothesis test that tests the null hypothesis that survival curves of two populations do not differ. It will output an indicator of the two groups being significantly different in terms of survival when its p-value will be inferior to risk threshold.
 It is generated from a sequence of 2 by 2 tables measuring conditional independence. It is efficient in comparing groups differed by categorical variables, but not continuous ones.
 In R, 
 
 ```{r}
-logrankdays <- survdiff(survdays ~ train$trt)
-logrankmonths <- survdiff(survmonths ~ train$trt)
-#plot(logrankdays)
-#plot(logrankmonths)
+MH <- survdiff(survival ~ specimen$trt)
+MH
+#plot(MH)
 ```
 
 ## Cox Model
@@ -289,22 +204,25 @@ Also known as proportional hazard model, conveniently accesses the effect of con
 Note that the assumption is strong.
 
 ```{r}
-fit.coxph.days <- coxph(survdays  ~ age + edema + log(bili) + log(albumin) + log(protime), data = train)
-fit.coxph.months <- coxph(survmonths  ~ age + edema + log(bili) + log(albumin) + log(protime), data = train)
-summary(fit.coxph.days)
-summary(fit.coxph.months)
+fit.coxph <- coxph(survival  ~ age + edema + hepato + platelet + sex + spiders + ascites + log(albumin) + log(alk.phos) + log(ast) + log(bili) + log(chol) + log(copper) + log(trig) + log(protime), data = specimen)
+summary(fit.coxph)
 ```
+
+We observe six covariates being significant to the data
+
+```{r}
+fit.coxph2 <- coxph(survival  ~ age + edema + log(albumin) + log(bili) + log(protime), data = specimen)
+```
+
 
 Visualizing the model:
 
 ```{r}
-data.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1),protime=rep(1,1))
-
-#plot(survfit(fit.coxph.days, newdata=data.null), lwd=2,ylim=c(.99,1), main='baseline survivor', xlab='Days', ylab='Survival', conf.int=T)
-#plot(survfit(fit.coxph.months, newdata=data.null), lwd=2,ylim=c(.99,1), main='baseline survivor', xlab='Months', ylab='Survival', conf.int=T)
-
-plot(survfit(fit.coxph.days),lwd=2,main= 'fitted survival function at mean covariates', xlab='Days', ylab='Survival')
-plot(survfit(fit.coxph.months),lwd=2,main= 'fitted survival function at mean covariates', xlab='Months', ylab='Survival')
+specimen.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1), protime=rep(1,1))
+# for baseline
+plot(survfit(fit.coxph2, newdata=specimen.null), lwd=2,ylim=c(.99,1), main='baseline survivor', xlab='Years', ylab='Survival', conf.int=T)
+# for mean covariates
+plot(survfit(fit.coxph2),lwd=2,main= 'fitted survival function at mean covariates', xlab='Years', ylab='Survival')
 ```
 
 ## Diagnostic of Cox Model
