@@ -45,7 +45,7 @@ y_time <- pmin(y_time_event, y_time_censoring)
 y_event <- y_time_event <= y_time_censoring
 y <- Surv(y_time, y_event)
 ```
-Matrix multiplication X (n x p matrix) . beta (p x 1 column vector) = prefictor (n x 1 column vector)
+Matrix multiplication X (n x p matrix) . beta (p x 1 column vector) = predictor (n x 1 column vector)
 
 We should have about 1/3 of the data points censored:
 ```{r}

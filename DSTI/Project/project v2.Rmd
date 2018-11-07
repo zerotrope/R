@@ -85,8 +85,8 @@ Transplantation cases will not be of concerned in the context of a survival surv
 ```{r}
 # assign data set to a labelled object
 data <- pbc
-# create death related event parameter
-data$death <- 0 + (data$status == 2)
+# create event parameter corresponding to death of the patient
+data$event <- 0 + (data$status == 2)
 ```
 
 ## Convert all categorical data of the data set
@@ -162,14 +162,43 @@ addmargins(prop.table(table(g)))
 ## Fitting a linear model to our train set
 
 ```{r}
-fit.train <- (lm(death ~ trt, data = train))
-validate$predict.lm <- predict(fit.train, newdata = validate)
+fit.train.linear <- (lm(event ~ trt, data = train))
+predict.linear <- as.numeric(predict(fit.train.linear, newdata = validate))
+summary(fit.train.linear)
+```
+
+## Measure of prediction accuracy through "Mean Absolute Percentage Error"
+
+```{r}
+actual <- as.numeric(c(validate$trt))
+predicted <- c(predict.linear)
+str(actual)
+str(predict.linear)
+str(predicted)
 ```
 
 ```{r}
-head(validate)
-summary(validate)
+mape <- function(y, yhat)
+{
+  mean(abs((y - yhat)/y)*100)
+}
+predict.linear.mape <- mape(actual, predict.linear)
 ```
+
+Our MAPE result returns a bad score. Let's implement a different fitting model in order to try increasing our prediction score.
+
+## Fitting a logistic regression model to our trian set
+
+```{r}
+fit.train.logistic <- glm(event ~ trt, data = train, family = 'binomial')
+predict.logistic <- as.numeric(predict(fit.train.logistic, newdata = validate))
+summary(fit.train.logistic)
+```
+
+```{r}
+predict.logistic.mape <- mape(actual, predict.logistic)
+```
+
 
 By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment (Dpenicillamine vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow ourself to proceed to exploratory analysis.
 
@@ -178,7 +207,7 @@ By having separated the complete pbc data set into one train set of the 312 obse
 ## integrate a dependent variable y as the survival in months to data set
 
 ```{r}
-train$y <- with(train, Surv(time / 30.5, death))
+train$y <- with(train, Surv(time / 30.5, event))
 head(train)
 summary(train$y)
 ```
@@ -197,8 +226,8 @@ In the situation where status returns more than two modalities or if the modalit
 */
 
 ```{r}
-survdays <- Surv(train$time, train$death)
-#survmonths <- Surv(train$time / 30.5, train$death)
+survdays <- Surv(train$time, train$event)
+#survmonths <- Surv(train$time / 30.5, train$event)
 #survdays
 #survmonths
 ```
