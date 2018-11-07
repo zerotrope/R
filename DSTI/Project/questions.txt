@@ -1,0 +1,13 @@
+Avec Mél, on a avancé, on a fait : 
+ - le split des data en train, validate & test sets
+ - le learning du train mort vs. traitement avec deux modèles, un linéaire et un logistique
+ - la prédiction sur le validate set avec les deux modèles
+ - la mesure de la pertinence des prédictions de chaque modèle avec MAPE & R²
+Mais on se pause de plus en plus de questions, d'abord :
+ - on ne sait pas interpréter les MAPE / R² et d'ailleurs personne ne sait les interpréter, ça change avec les données
+ - quoi prédire sur le test set (le traitement?) et dans quel but (l'homogénéisation du data set pour tout aggréger ensuite et runner les modèles de survival sur le tout?)
+Mais plus fondamentalement, notre objet d'étude étant la survie :
+ - pourquoi être entrés dans une démarche de Machine Learning au début
+ - aucune de nos sources ne fait ce travail et passe directement à l'étude du survival qui ne croise jamais directement l'event de mort vs. le traitement mais qui essaie plutôt d'expliquer l'impact des autres paramètres sur la survie du patient
+ - est-ce qu'on se serait pas pris un peu trop la tête: est ce que toute la première partie type "ML" est-elle vraiment nécessaire? Ils ont fait ça chez Raul?
+Avant qu'on statue tous les 3 sur ces questions, j'essaie de continuer sur la partie survival pure.

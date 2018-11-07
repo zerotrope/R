@@ -18,6 +18,11 @@ Steps
  - analyse de résiduals
  - bonus: comparaison de modèles
  
+Questions
+ - coxph au début pour identifier les paramètres significatifs?
+ - interprétation MAPE & R²?
+ - on veut prédire le traitement ou la mort des 106?
+ 
 -------------------------------------------------------------------------
 
 # Introduction
@@ -163,44 +168,64 @@ addmargins(prop.table(table(g)))
 
 ```{r}
 fit.train.linear <- (lm(event ~ trt, data = train))
-predict.linear <- as.numeric(predict(fit.train.linear, newdata = validate))
+validate.linear <- as.numeric(predict(fit.train.linear, newdata = validate))
 summary(fit.train.linear)
 ```
+
+## Measure of prediction accuracy through "R-squared"
+
+```{r}
+validate.linear.Rsquared <- summary(fit.train.linear)$r.squared
+validate.linear.AdjRsquared <- summary(fit.train.linear)$adj.r.squared
+```
+
+Both close to 0.
 
 ## Measure of prediction accuracy through "Mean Absolute Percentage Error"
 
 ```{r}
 actual <- as.numeric(c(validate$trt))
-predicted <- c(predict.linear)
 str(actual)
-str(predict.linear)
-str(predicted)
+str(validate.linear)
 ```
 
 ```{r}
 mape <- function(y, yhat)
 {
-  mean(abs((y - yhat)/y)*100)
+  mean(abs((y - yhat)/y))
 }
-predict.linear.mape <- mape(actual, predict.linear)
+validate.linear.mape <- mape(actual, validate.linear)
 ```
 
-Our MAPE result returns a bad score. Let's implement a different fitting model in order to try increasing our prediction score.
+Returning a MAPE score of c. 0.68.
 
-## Fitting a logistic regression model to our trian set
+## Fitting a logistic regression model to our train set & prediction on our validation set
 
 ```{r}
 fit.train.logistic <- glm(event ~ trt, data = train, family = 'binomial')
-predict.logistic <- as.numeric(predict(fit.train.logistic, newdata = validate))
+validate.logistic <- as.numeric(predict(fit.train.logistic, newdata = validate))
 summary(fit.train.logistic)
 ```
 
+## Measure of prediction accuracy through "Mean Absolute Percentage Error"
+
 ```{r}
-predict.logistic.mape <- mape(actual, predict.logistic)
+validate.logistic.mape <- mape(actual, validate.logistic)
 ```
 
+Returning a MAPE score of c. 1.25
 
-By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment (Dpenicillamine vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow ourself to proceed to exploratory analysis.
+/*
+  By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment   (Dpenicillamine vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the    other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow     ourself to proceed to exploratory analysis.
+*/
+
+## Predictions on the test set
+
+```{r}
+# linear predictions
+predict
+```
+
 
 # Exploratory analysis
 
