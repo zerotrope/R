@@ -6,25 +6,19 @@ authors:    Melanie
 ---
 
 Steps 
- - DONE // drop les predict actuels
- - DONE // split data set 312 : train(70%) validation(30%)
- - DONE // predict treatment on validation set with linear model
- - FIX // predict event death : test R² ou MAPE pour validation du modèle
- - FIX // predict sur les 106 test set
- - FIX // concatene tout le dataset complet (train+valid+test)
  - DONE // KM estimator 
  - Plot logrank curves
- - Plot cox baselin curves
- - check logrank curves pour troncate (juste un commentaire à faire), check jour Antonio Truncation video
+ - Plot cox baseline curves
+ - check logrank curves pour troncate (juste un commentaire Ã  faire), check jour Antonio Truncation video
  - chain les coxph pour identifier les variables significatives
- - analyse de résiduals
- - bonus: comparaison de modèles
+ - analyse de rÃ©siduals
+ - bonus: comparaison de modÃ¨les
  
 Questions
- - intégrer les 19 patients transplantés dans les censurés?
- - coxph au début pour identifier les paramètres significatifs?
- - interprétation MAPE & R²?
- - on veut prédire le traitement ou la mort des 106?
+ - intÃ©grer les 19 patients transplantÃ©s dans les censurÃ©s?
+ - coxph au dÃ©but pour identifier les paramÃ¨tres significatifs?
+ - interprÃ©tation MAPE & RÂ²?
+ - on veut prÃ©dire le traitement ou la mort des 106?
  
 -------------------------------------------------------------------------
 
@@ -70,6 +64,7 @@ We also ground the present document on various other packages for data presentat
 
 ```{r}
 library(ggplot2)
+library(survminer)
 library(readr)
 library(glmnet)
 library(survival)
@@ -143,9 +138,9 @@ summary(data)
 
 ## Locate patients for survival analysis
 
-Our patient's type-profile encompasses : 
+Our patient's type-profile encompasses :
  - patients that followed a treatment, thus excluding the 106 patients that did not;
- - patients concerned by the event of their death or consored, thus excluding the patients that were transplanted
+ - patients concerned by the event of their death or consored, thus excluding the patients that were transplanted.
 
 ```{r}
 specimen <- subset(data, data$trt != "NA" & data$status != 1)
@@ -162,14 +157,8 @@ Survival objects are created through the Surv(time, status) function from the "s
 
 In the situation where status returns more than two modalities or if the modalities are not returning a boolean conditioned by the fact that the observations are censored or not, the formula creating the survival object must precise the proper modalities corresponding to censored observations.
 
-/*
-  Here with two time ranges, in days as by default in the data set and in
-  months as computed ad hoc for lisibility
-*/
-
 ```{r}
 survival <- Surv(specimen$time / 365.25, specimen$event)
-
 ```
 
 Hereby computed with time alteration to show yearly-basis scale for lisibility purpose of the reader.
@@ -186,16 +175,80 @@ KM
 plot(KM, xlab="Survival Years", ylab="Kaplan-Meyer Estimator")
 ```
 
+On a broader note, the reader may be interested in visualizing the survival regarding other parameters such as the sex parameter...
+
+```{r}
+# fitting the survival to sex parameter
+fit.sex <- survfit(survival ~ sex, data = specimen)
+## visualizing the survival probability
+ggsurvplot(fit.sex, 
+           data = specimen, 
+           xlab = "Years",
+           conf.int = TRUE,
+           pval = TRUE,
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+## visualizing the cumulative event
+ggsurvplot(fit.sex, 
+           data = specimen, 
+           xlab = "Years",
+           fun = "event",
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+## visualizing the cumulative hazard
+ggsurvplot(fit.sex, 
+           data = specimen, 
+           xlab = "Years",
+           fun = "cumhaz",
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+```
+
+...and especially the treatment parameter...
+
+```{r}
+# fitting the survival to treatment parameter
+fit.sex <- survfit(survival ~ trt, data = specimen)
+## visualizing the survival probability
+ggsurvplot(fit.trt, 
+           data = specimen, 
+           xlab = "Years",
+           conf.int = TRUE,
+           pval = TRUE,
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+## visualizing the cumulative event
+ggsurvplot(fit.trt, 
+           data = specimen, 
+           xlab = "Years",
+           fun = "event",
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+## visualizing the cumulative hazard
+ggsurvplot(fit.trt, 
+           data = specimen, 
+           xlab = "Years",
+           fun = "cumhaz",
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+```
+
+... with the aim to introduce the reader to the observation of the difference in treatment variable to be explicited in the later to come log-rank test.
+
 ## Mantel-Haenzel test - comparing two groups' own survival
 
 Also known as log-rank test, it is a statistical hypothesis test that tests the null hypothesis that survival curves of two populations do not differ. It will output an indicator of the two groups being significantly different in terms of survival when its p-value will be inferior to risk threshold.
 It is generated from a sequence of 2 by 2 tables measuring conditional independence. It is efficient in comparing groups differed by categorical variables, but not continuous ones.
-In R, 
 
 ```{r}
 MH <- survdiff(survival ~ specimen$trt)
 MH
-#plot(MH)
 ```
 
 ## Cox Model
@@ -204,29 +257,55 @@ Also known as proportional hazard model, conveniently accesses the effect of con
 Note that the assumption is strong.
 
 ```{r}
-fit.coxph <- coxph(survival  ~ age + edema + hepato + platelet + sex + spiders + ascites + log(albumin) + log(alk.phos) + log(ast) + log(bili) + log(chol) + log(copper) + log(trig) + log(protime), data = specimen)
+# test ran with all covariates
+coxph <- coxph(survival  ~ age + edema + hepato + platelet + sex + spiders + ascites + log(albumin) + log(alk.phos) + log(ast) + log(bili) + log(chol) + log(copper) + log(trig) + log(protime), data = specimen)
+summary(coxph)
+```
+
+We observe six covariates being significant to the data that we decide to select in order to refine our analysis.
+
+```{r}
+# fitted test with significant covariate only
+fit.coxph <- coxph(survival  ~ age + as.factor(edema) + log(albumin) + log(bili) + log(protime) + log(copper), data = specimen)
 summary(fit.coxph)
 ```
 
-We observe six covariates being significant to the data
+Visualizing the model.
+Please note that mentionning the as.factor() function on the edema parameter heped fix the plot of the baseline.
 
 ```{r}
-fit.coxph2 <- coxph(survival  ~ age + edema + log(albumin) + log(bili) + log(protime), data = specimen)
-```
-
-
-Visualizing the model:
-
-```{r}
-specimen.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1), protime=rep(1,1))
+specimen.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1), protime=rep(1,1), copper=rep(1,1))
 # for baseline
-plot(survfit(fit.coxph2, newdata=specimen.null), lwd=2,ylim=c(.99,1), main='baseline survivor', xlab='Years', ylab='Survival', conf.int=T)
+plot(survfit(fit.coxph, newdata=specimen.null), lwd=2,ylim=c(.99,1), main='Baseline survivor', xlab='Years', ylab='Survival', conf.int=T)
 # for mean covariates
-plot(survfit(fit.coxph2),lwd=2,main= 'fitted survival function at mean covariates', xlab='Years', ylab='Survival')
+plot(survfit(fit.coxph),lwd=2,main= 'Fitted survivor at mean covariates', xlab='Years', ylab='Survival')
 ```
+
+Various other visualizations exist such as the function ggforest() from the survminer package which creates a forest plot for a Cox regression model fit. Hazard ratio estimates along with confidence intervals and p-values are plotter for each variable.
+
+```{r}
+ggforest(fit.coxph)
+```
+
 
 ## Diagnostic of Cox Model
 
-```{r}
+The function cox.zph() from survival package may be used to test the proportional hazards assumption for a Cox regression model fit. The graphical verification of this assumption may be performed with the function ggcoxzph() from the survminer package. For each covariate it produces plots with scaled Schoenfeld residuals against the time. 
 
+```{r}
+ftest <- cox.zph(fit.coxph)
+ftest
+ggcoxzph(ftest)
 ```
+
+Additionally the function ggcoxdiagnostics() plots diï¬€erent types of residuals as a function of time, linear predictor or observation id. The type of residual is selected with type argument. Possible values are "martingale", "deviance", "score", "schoenfeld", "dfbeta"', "dfbetas", and "scaledsch". The ox.scale argument defines what shall be plotted on the OX axis. Possible values are "linear.predictions", "observation.id", "time". Logical arguments hline and sline may be used to add horizontal line or smooth line to the plot.
+
+```{r}
+ggcoxdiagnostics(fit.coxph,
+                 type = "deviance",
+                 ox.scale = "time")
+ggcoxdiagnostics(fit.coxph,
+                 type = "schoenfeld",
+                 ox.scale = "time")
+```
+
