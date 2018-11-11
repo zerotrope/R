@@ -211,7 +211,7 @@ ggsurvplot(fit.sex,
 
 ```{r}
 # fitting the survival to treatment parameter
-fit.sex <- survfit(survival ~ trt, data = specimen)
+fit.trt <- survfit(survival ~ trt, data = specimen)
 ## visualizing the survival probability
 ggsurvplot(fit.trt, 
            data = specimen, 
@@ -251,6 +251,19 @@ MH <- survdiff(survival ~ specimen$trt)
 MH
 ```
 
+The log-rank returning a p-value way over the risk threshold c. 0.8 implies that we do not have enough elements to reject the null hypothesis as such there is no significant statistical difference between the two treatments.
+
+Let's apply a Wilcoxon test in order to compare the significance result with the one from the log-rank test. The reader will be advised that however :
+ - the log-rank test is more effective when the curves do not cross each other;
+ - when instantaneous hazard rates are proportional, the log-rank test is the "best" to be run.
+ 
+```{r}
+W <- survdiff(survival ~ specimen$trt, rho=1)
+W
+```
+
+Returning a p-value even worse than for the log-rank test preventing us from rejecting the null hypothesis one again. 
+
 ## Cox Model
 
 Also known as proportional hazard model, conveniently accesses the effect of continuous and categorical variable using partial likelihood to get inference even without knowledge of baseline hazard.
@@ -262,7 +275,7 @@ coxph <- coxph(survival  ~ age + edema + hepato + platelet + sex + spiders + asc
 summary(coxph)
 ```
 
-We observe six covariates being significant to the data that we decide to select in order to refine our analysis.
+Various instructions can be used to adjust the Cox model on the data. Here above we adjusted the Cox model on our specimen data set with all the possible covariates the data set can possibly provide as predictors. The effects of each covariate are estimated. Our objective was to identify the covariates that are identified as significant predictors by the Cox model. We observe six covariates being significant to the data that we decide to select in order to refine our analysis.
 
 ```{r}
 # fitted test with significant covariate only
@@ -270,8 +283,16 @@ fit.coxph <- coxph(survival  ~ age + as.factor(edema) + log(albumin) + log(bili)
 summary(fit.coxph)
 ```
 
+Another instruction could help us identify the interactions between the different covariates themselves and not only their unilateral effects of each one of them as predictors.
+
+```{r}
+# fitted test and interactions between covariates
+fit.coxph.inter <- coxph(survival  ~ age * as.factor(edema) * log(albumin) * log(bili) * log(protime) * log(copper), data = specimen)
+summary(fit.coxph.inter)
+```
+
 Visualizing the model.
-Please note that mentionning the as.factor() function on the edema parameter heped fix the plot of the baseline.
+The reader be advised that mentionning the as.factor() function on the edema parameter heped fix the plot of the baseline.
 
 ```{r}
 specimen.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1), protime=rep(1,1), copper=rep(1,1))
@@ -281,12 +302,13 @@ plot(survfit(fit.coxph, newdata=specimen.null), lwd=2,ylim=c(.99,1), main='Basel
 plot(survfit(fit.coxph),lwd=2,main= 'Fitted survivor at mean covariates', xlab='Years', ylab='Survival')
 ```
 
+Here returning a unique curve for all the patients in the data set with a confidence interval.
+
 Various other visualizations exist such as the function ggforest() from the survminer package which creates a forest plot for a Cox regression model fit. Hazard ratio estimates along with confidence intervals and p-values are plotter for each variable.
 
 ```{r}
 ggforest(fit.coxph)
 ```
-
 
 ## Diagnostic of Cox Model
 
@@ -298,7 +320,7 @@ ftest
 ggcoxzph(ftest)
 ```
 
-Additionally the function ggcoxdiagnostics() plots diﬀerent types of residuals as a function of time, linear predictor or observation id. The type of residual is selected with type argument. Possible values are "martingale", "deviance", "score", "schoenfeld", "dfbeta"', "dfbetas", and "scaledsch". The ox.scale argument defines what shall be plotted on the OX axis. Possible values are "linear.predictions", "observation.id", "time". Logical arguments hline and sline may be used to add horizontal line or smooth line to the plot.
+Additionally the function ggcoxdiagnostics() plots different types of residuals as a function of time, linear predictor or observation id. The type of residual is selected with type argument. Possible values are "martingale", "deviance", "score", "schoenfeld", "dfbeta"', "dfbetas", and "scaledsch". The ox.scale argument defines what shall be plotted on the OX axis. Possible values are "linear.predictions", "observation.id", "time". Logical arguments hline and sline may be used to add horizontal line or smooth line to the plot.
 
 ```{r}
 ggcoxdiagnostics(fit.coxph,
