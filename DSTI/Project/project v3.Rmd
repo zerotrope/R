@@ -92,7 +92,7 @@ data <- pbc
 data$event <- 0 + (data$status == 2)
 ```
 
-## Convert all categorical data of the data set
+## Convert the future covariates into factor
 
 ```{r}
 data$trt <- factor(data$trt)
@@ -105,13 +105,22 @@ data$spiders <- factor(data$spiders)
 
 ## Create age intervals
 
+Printing the histogram of the age variable might help naively identifying gaps or cuts in its distribution. This would highlight the number of modes encompassed in the variable. Obvious gaps would suggest cutoffs on which basing age groups variable.
+
 ```{r}
 hist(data$age)
+```
+
+We observe a properly distributed age variable with no cuts or gaps thus implying a ageGroup variable evenly distributed too.
+
+```{r}
 data$ageGroup <- cut(data$age, breaks = c(0,10,20,30,40,50,60,70,80,90,Inf))
 table(data$ageGroup)
 ```
 
 ## Input some missing values
+
+Few missing values including for some future covariates invited us to apply linear model predictions.
 
 ```{r}
 # cholesterol
@@ -165,14 +174,14 @@ Hereby computed with time alteration to show yearly-basis scale for lisibility p
 
 ## Kaplan-Meyer estimator - estimation of the survival function
 
-Also known as "product-limit estimator", the Kaplan-Meyer estimator (KM) is a non-parametric statistic that allows us to estimate the survival function. It gives the probability that an individual patient will survive past a particular time t. It is based on the assumption that the probability of surviving past a certain time point t is equal to the product of the observed survival rates until time point t.
+Also known as "product-limit estimator", the Kaplan-Meyer estimator (KM) is a non-parametric statistic (ie. not based on the assumption of an underlying probability distribution) that allows us to estimate the survival function. It gives the probability that an individual patient will survive past a particular time t. It is based on the assumption that the probability of surviving past a certain time point t is equal to the product of the observed survival rates until time point t.
 It is similar to the censoring version of empirical survival function, generating a stair-step curve but not accounting for effect of other covariates.
 In R, the estimation of a survival function through the use of a survival object (ie. from censored data) is done thanks to the survfit(Surv(time, status), data) function of the "survival" package.
 
 ```{r}
 KM <- survfit(survival ~ 1, data = specimen)
 KM
-plot(KM, xlab="Survival Years", ylab="Kaplan-Meyer Estimator")
+ggsurvplot(KM, xlab="Survival Years", ylab="Kaplan-Meyer Estimator")
 ```
 
 On a broader note, the reader may be interested in visualizing the survival regarding other parameters such as the sex parameter...
@@ -184,7 +193,7 @@ fit.sex <- survfit(survival ~ sex, data = specimen)
 ggsurvplot(fit.sex, 
            data = specimen, 
            xlab = "Years",
-           conf.int = TRUE,
+           conf.int = FALSE,
            pval = TRUE,
            legend = "top",
            legend.title = "Sex",
@@ -216,7 +225,7 @@ fit.trt <- survfit(survival ~ trt, data = specimen)
 ggsurvplot(fit.trt, 
            data = specimen, 
            xlab = "Years",
-           conf.int = TRUE,
+           conf.int = FALSE,
            pval = TRUE,
            legend = "top",
            legend.title = "Sex",
@@ -268,6 +277,8 @@ Returning a p-value even worse than for the log-rank test preventing us from rej
 
 Also known as proportional hazard model, conveniently accesses the effect of continuous and categorical variable using partial likelihood to get inference even without knowledge of baseline hazard.
 Note that the assumption is strong.
+
+Whereas the log-rank test compares two Kaplan-Meier survival curves, which might be derived from splitting a patient population into treatment subgroups, Cox proportional hazards models are derived from the underlying baseline hazard functions of the patient populations in question and an arbitrary number of dichotomized covariates. Again, it does not assume an underlying probability distribution but it assumes that the hazards of the patient groups you compare are constant over time.
 
 ```{r}
 # test ran with all covariates
