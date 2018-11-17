@@ -217,7 +217,7 @@ ggsurvplot(fit.sex,
            legend.labs = c("Male", "Female"))
 ```
 
-Additionally to the general shape of the curves, the reader might be interested in the p-value shown at the bottom-left of the figure which is the corresponding log-rank test p-value result. Here statistically significant, as under an arbitrary threshold of 5% (95% confidence interval) we have enough significance to reject the log-rank null hypothesis and affirm that the two groups here male & female, survive differently to the biliary cirrhosis.
+Additionally to the general shape of the curves, the reader might be interested in the p-value shown at the bottom-left of the figure which is the corresponding log-rank test p-value result. Here statistically significant, as under an arbitrary threshold of 5% (95% confidence interval) we have enough significance to reject the log-rank null hypothesis and affirm that the two groups here male & female, survive differently to the biliary cirrhosis. Explicitly, men have a worse survival rate than women to biliary cirrhosis. We also note the number of censored data on for female patients appear to be way superior to the ones of male patients, naively said to concur the above results.
 
 Now considering the treatment parameter (D-penicillmain or placebo) :
 
@@ -231,44 +231,82 @@ ggsurvplot(fit.trt,
            conf.int = FALSE,
            pval = TRUE,
            legend = "top",
-           legend.title = "Sex",
-           legend.labs = c("Male", "Female"))
+           legend.title = "Treatment",
+           legend.labs = c("D-penicillmain", "Placebo"))
 ## visualizing the cumulative event
 ggsurvplot(fit.trt, 
            data = specimen, 
            xlab = "Years",
            fun = "event",
            legend = "top",
-           legend.title = "Sex",
-           legend.labs = c("Male", "Female"))
+           legend.title = "Treatment",
+           legend.labs = c("D-penicillmain", "Placebo"))
 ## visualizing the cumulative hazard
 ggsurvplot(fit.trt, 
            data = specimen, 
            xlab = "Years",
            fun = "cumhaz",
            legend = "top",
-           legend.title = "Sex",
-           legend.labs = c("Male", "Female"))
+           legend.title = "Treatment",
+           legend.labs = c("D-penicillmain", "Placebo"))
 ```
 
-As visually as supported by the very high p-value resulting from the study, we do not have enough significance in order to reject the null hypothesis and thus conclude that there is no significant difference between both treatment protocols.
+As visually as supported by the very high p-value resulting from the study, we do not have enough significance in order to reject the null hypothesis and thus conclude that there is no significant difference between both treatment protocols. Explicitly, whereas taking a D-penicillmain treatment or a placebo treatment has no impact on patients' survival rate.
 
-the provided p-value to the KM visualization of the survival object has introduced the reader to the observation of differences in some parameters variable to be explicited in the Mantel-Haenzel test, also called the log-rank test.
+Another visualization useful for the reader might be the study of the survival object regarding the age parameter. As stated earlier it appeared necessary to us to retreat the age parameter in order to make it senseful to the KM and log-rank tests by "binarizing" it as the following :
+
+```{r}
+# age parameter retreatment named "ageBin" parameter
+specimen$ageBin <- ifelse(specimen$age > 50, ">50", "<=50")
+# converting the ageBin parameter into factor
+specimen$ageBin <- as.factor(specimen$ageBin)
+# fitting the survival to the new age parameter
+fit.age <- survfit(survival ~ ageBin, data = specimen)
+## visualizing the survival probability
+ggsurvplot(fit.age, 
+           data = specimen, 
+           xlab = "Years",
+           conf.int = FALSE,
+           pval = TRUE,
+           legend = "top",
+           legend.title = "Age",
+           legend.labs = c("Olders (>50)", "Youngers (<=50)"))
+## visualizing the cumulative event
+ggsurvplot(fit.age, 
+           data = specimen, 
+           xlab = "Years",
+           fun = "event",
+           legend = "top",
+           legend.title = "Age",
+           legend.labs = c("Olders (>50)", "Youngers (<=50)"))
+## visualizing the cumulative hazard
+ggsurvplot(fit.age, 
+           data = specimen, 
+           xlab = "Years",
+           fun = "cumhaz",
+           legend = "top",
+           legend.title = "Age",
+           legend.labs = c("Olders (>50)", "Youngers (<=50)"))
+```
+
+Here again as the reader may have an intuition of the potential difference in survival regarding the age parameter as shown by the shapes of the curves, the resulting p-value (0.028%) indicates that there exists a statistically significant difference in the survival of the two groups segmented through the age parameter. Explicitly the "youngers", the patients who's age is below or equal to fifty years old, have a worse survival rate over time than the "olders" the patients who's age is greater than fifty years old.
+
+The provided p-value to the KM visualization of the survival object has introduced the reader to the observation of differences in some parameters variable to be explicited in the Mantel-Haenzel test, also called the log-rank test.
 
 ## Mantel-Haenzel test - comparing two groups' own survival
 
 Also known as log-rank test, it is a statistical hypothesis test that tests the null hypothesis that survival curves of two populations do not differ. It will output an indicator of the two groups being significantly different in terms of survival when its p-value will be inferior to risk threshold.
-It is generated from a sequence of 2 by 2 tables measuring conditional independence. It is efficient in comparing groups differed by categorical variables, but not continuous ones.
+It is generated from a sequence of 2 by 2 tables measuring conditional independence. It is efficient in comparing groups differed by categorical variables, but not continuous ones. Its validity conditions might appear quite delicate to the reader as the log-rank test, to be considered as applicable require or an important number of death times which mathcs the situation of our sample study, or an important number of deads at each death time.
 
 ```{r}
 MH <- survdiff(survival ~ specimen$trt)
 MH
 ```
 
-The log-rank returning a p-value way over the risk threshold c. 0.8 implies that we do not have enough elements to reject the null hypothesis as such there is no significant statistical difference between the two treatments.
+The log-rank returning a p-value way over the risk threshold c. 0.8 implies that we do not have enough elements to reject the null hypothesis as such there is no significant statistical difference between the two treatments. As stated earlier, the explicit interpretation of the present test is whereas taking a D-penicillmain treatment or a placebo treatment has no impact on patients' survival rate.
 
-Let's apply a Wilcoxon test in order to compare the significance result with the one from the log-rank test. The reader will be advised that however :
- - the log-rank test is more effective when the curves do not cross each other;
+An alternative test, the Wilcoxon test may be applied in order to compare the significance of the result with the one from the log-rank test. The reader will be advised that however :
+ - the log-rank test is more effective when the survival curves do not cross each other;
  - when instantaneous hazard rates are proportional, the log-rank test is the "best" to be run.
  
 ```{r}
@@ -276,7 +314,7 @@ W <- survdiff(survival ~ specimen$trt, rho=1)
 W
 ```
 
-Returning a p-value even higher than for the log-rank test preventing us from rejecting the null hypothesis one again and leading us to conclude that there is no statistically significant difference between the two studied groups D-penicillmain patients vs placebo ones.
+Returning a p-value even higher than for the log-rank test preventing us from rejecting the null hypothesis, concurring the interpretation made from the log-rank test result and leading us to conclude that there is no statistically significant difference between the two studied groups D-penicillmain patients vs placebo ones.
 
 ## Cox Model
 
@@ -320,10 +358,10 @@ plot(survfit(fit.coxph),lwd=2,main= 'Fitted survivor at mean covariates', xlab='
 
 Here returning a unique curve for all the patients in the data set with a confidence interval.
 
-Various other visualizations exist such as the function ggforest() from the survminer package which creates a forest plot for a Cox regression model fit. Hazard ratio estimates along with confidence intervals and p-values are plotter for each variable.
+Various other visualizations exist such as the function ggforest() from the survminer package which creates a forest plot for a Cox regression model fit. Hazard ratio estimates along with confidence intervals and p-values are plotter for each variable. Here we plot the forest for the three most significant covariates : age, bili and albumin parameters.
 
 ```{r}
-ggforest(fit.coxph)
+ggforest(coxph(survival ~ log(bili) + log(albumin) + ageBin, data = specimen))
 ```
 
 ## Diagnostic of Cox Model
