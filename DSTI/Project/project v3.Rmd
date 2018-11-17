@@ -9,16 +9,16 @@ Steps
  - DONE // KM estimator 
  - Plot logrank curves
  - Plot cox baseline curves
- - check logrank curves pour troncate (juste un commentaire à faire), check jour Antonio Truncation video
+ - check logrank curves pour troncate (juste un commentaire a faire), check jour Antonio Truncation video
  - chain les coxph pour identifier les variables significatives
- - analyse de résiduals
- - bonus: comparaison de modèles
+ - analyse de residuals
+ - bonus: comparaison de modeles
  
 Questions
- - intégrer les 19 patients transplantés dans les censurés?
- - coxph au début pour identifier les paramètres significatifs?
- - interprétation MAPE & R²?
- - on veut prédire le traitement ou la mort des 106?
+ - integrer les 19 patients transplantess dans les censures?
+ - coxph au debut pour identifier les parametres significatifs?
+ - interpretation MAPE & R�?
+ - on veut predire le traitement ou la mort des 106?
  
 -------------------------------------------------------------------------
 
@@ -68,7 +68,6 @@ library(survminer)
 library(readr)
 library(glmnet)
 library(survival)
-?pbc
 ```
 
 ## Data visualizations
@@ -184,7 +183,9 @@ KM
 ggsurvplot(KM, xlab="Survival Years", ylab="Kaplan-Meyer Estimator")
 ```
 
-On a broader note, the reader may be interested in visualizing the survival regarding other parameters such as the sex parameter...
+The KM test here returns a median survival of 8.99 years, the moment at which 50% of the patients were alive and 50% were reaching the event point ie. here, death. On a broader note, the reader may be interested in visualizing the survival regarding other parameters. This can be realised by crossing the survival object with the specific parameters through additional KM tests. Interesting parameters to be confronted to survival may be the sex parameter, the treatment parameter and the age parameter, the later requiring a preparation to its study (ie. "binarizing" the sample into "younger" vs "older" patients for example).
+
+Considering the sex parameter first :
 
 ```{r}
 # fitting the survival to sex parameter
@@ -216,7 +217,9 @@ ggsurvplot(fit.sex,
            legend.labs = c("Male", "Female"))
 ```
 
-...and especially the treatment parameter...
+Additionally to the general shape of the curves, the reader might be interested in the p-value shown at the bottom-left of the figure which is the corresponding log-rank test p-value result. Here statistically significant, as under an arbitrary threshold of 5% (95% confidence interval) we have enough significance to reject the log-rank null hypothesis and affirm that the two groups here male & female, survive differently to the biliary cirrhosis.
+
+Now considering the treatment parameter (D-penicillmain or placebo) :
 
 ```{r}
 # fitting the survival to treatment parameter
@@ -248,7 +251,9 @@ ggsurvplot(fit.trt,
            legend.labs = c("Male", "Female"))
 ```
 
-... with the aim to introduce the reader to the observation of the difference in treatment variable to be explicited in the later to come log-rank test.
+As visually as supported by the very high p-value resulting from the study, we do not have enough significance in order to reject the null hypothesis and thus conclude that there is no significant difference between both treatment protocols.
+
+the provided p-value to the KM visualization of the survival object has introduced the reader to the observation of differences in some parameters variable to be explicited in the Mantel-Haenzel test, also called the log-rank test.
 
 ## Mantel-Haenzel test - comparing two groups' own survival
 
@@ -271,7 +276,7 @@ W <- survdiff(survival ~ specimen$trt, rho=1)
 W
 ```
 
-Returning a p-value even worse than for the log-rank test preventing us from rejecting the null hypothesis one again. 
+Returning a p-value even higher than for the log-rank test preventing us from rejecting the null hypothesis one again and leading us to conclude that there is no statistically significant difference between the two studied groups D-penicillmain patients vs placebo ones.
 
 ## Cox Model
 
