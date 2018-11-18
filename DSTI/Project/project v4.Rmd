@@ -7,19 +7,15 @@ authors:    Melanie
 
 Steps 
  - DONE // KM estimator 
- - Plot logrank curves
- - Plot cox baseline curves
- - check logrank curves pour troncate (juste un commentaire a faire), check jour Antonio Truncation video
- - chain les coxph pour identifier les variables significatives
+ - DONE // Plot logrank curves
+ - DONE // Plot cox baseline curves
+ - DONE // chain les coxph pour identifier les variables significatives
+ - analyse ggforest
  - analyse de residuals
+ - truncation?
+ - predictions?
  - bonus: comparaison de modeles
- 
-Questions
- - integrer les 19 patients transplantess dans les censures?
- - coxph au debut pour identifier les parametres significatifs?
- - interpretation MAPE & R²?
- - on veut predire le traitement ou la mort des 106?
- 
+
 -------------------------------------------------------------------------
 
 # Introduction
@@ -54,7 +50,7 @@ In this work, we will mainly consider the following variables: age (in years), s
     status:	    status at endpoint, 0/1/2 for censored, transplant, dead
     time:	      number of days between registration and the earlier of death,
                 transplantion, or study analysis in July, 1986
-    trt:	      1/2/NA for D-penicillmain, placebo, not randomised
+    trt:	      1/2/NA for D-penicillamin, placebo, not randomised
     trig:	      triglycerides (mg/dl)
     ----------  -----------------------------------
 
@@ -100,6 +96,7 @@ data$stage <- factor(data$stage)
 data$ascites <- factor(data$ascites)
 data$edema <- factor(data$edema)
 data$spiders <- factor(data$spiders)
+data$hepato <- factor(data$hepato)
 ```
 
 ## Create age intervals
@@ -209,7 +206,7 @@ Additionally to the general shape of the curves, the reader might be interested 
 
 Explicitly, the present figure shows that men have a worse survival expectancy than women to biliary cirrhosis. We also note the number of censored data for female patients appear to be superior to the ones of male patients, naively said to be concuring the above results.
 
-Now considering the treatment parameter (D-penicillmain vs. placebo) :
+Now considering the treatment parameter (D-penicillamin vs. placebo) :
 
 ```{r}
 # fitting the survival to treatment parameter
@@ -222,10 +219,10 @@ ggsurvplot(fit.trt,
            pval = TRUE,
            legend = "top",
            legend.title = "Treatment",
-           legend.labs = c("D-penicillmain", "Placebo"))
+           legend.labs = c("D-penicillamin", "Placebo"))
 ```
 
-As the reader might visually build an intuition of the difference in treatment parameter, the resulting non-significant p-value (79%) indicates that there is not enough statistical material in order to reject the null hypothesis and thus leads us to conclude that there is no significant difference between both treatment protocols. Explicitly, whereas taking a D-penicillmain treatment or a placebo treatment has no impact on patients' survival expectancy.
+As the reader might visually build an intuition of the difference in treatment parameter, the resulting non-significant p-value (79%) indicates that there is not enough statistical material in order to reject the null hypothesis and thus leads us to conclude that there is no significant difference between both treatment protocols. Explicitly, whereas taking a D-penicillamin treatment or a placebo treatment has no impact on patients' survival expectancy.
 
 Another visualization useful for the reader might be the study of the survival object regarding the age parameter. As stated earlier it appeared necessary to us to retreat the age parameter in order to make it senseful to the KM and log-rank tests by "binarizing" it as the following :
 
@@ -244,10 +241,10 @@ ggsurvplot(fit.age,
            pval = TRUE,
            legend = "top",
            legend.title = "Age",
-           legend.labs = c("Olders (>50)", "Youngers (<=50)"))
+           legend.labs = c("Youngers (<=50)", "Olders (>50)"))
 ```
 
-Here again as the reader may have an intuition of the potential difference in survival regarding the age parameter as shown by the shapes of the curves, the resulting p-value (0.028%) indicates that there exists a statistically significant difference in the survival of the two groups segmented through the age parameter. Explicitly the "youngers", the patients who's age is below or equal to fifty years old, have a worse survival expectancy over time than the "olders" the patients who's age is greater than fifty years old.
+Here again as the reader may have an intuition of the potential difference in survival regarding the age parameter as shown by the shapes of the curves, the resulting p-value (0.028%) indicates that there exists a statistically significant difference in the survival of the two groups segmented through the age parameter. Explicitly the "olders", the patients who's age is greater than fifty years old, have a worse survival expectancy over time than the "youngers" the patients who's age is lower or equal to fifty years old.
 
 The provided p-value to the KM visualization of the survival object has introduced the reader to the observation of differences in some parameters variable to be explicited in the Mantel-Haenzel test, also called the log-rank test.
 
@@ -262,7 +259,7 @@ MH <- survdiff(survival ~ specimen$trt)
 MH
 ```
 
-The log-rank test returning a non-significant p-value (80%) indicates that we do not have enough elements to reject the null hypothesis allowing us to interprete that there is no statistically significant difference between the two treatments. Concurring our earlier interpretation, whereas a patient was administered D-penicillmain or a placebo had no impact on the patient's survival expectancy.
+The log-rank test returning a non-significant p-value (80%) indicates that we do not have enough elements to reject the null hypothesis allowing us to interprete that there is no statistically significant difference between the two treatments. Concurring our earlier interpretation, whereas a patient was administered D-penicillamin or a placebo had no impact on the patient's survival expectancy.
 
 An alternative test, the Wilcoxon test may be applied in order to compare the significance of the result with the one from the log-rank test. However the reader will be advised that :
  - the log-rank test is more effective when the survival curves do not cross each other;
@@ -273,7 +270,7 @@ W <- survdiff(survival ~ specimen$trt, rho=1)
 W
 ```
 
-Returning a p-value even less significant than for the log-rank test, it prevents us from rejecting the null hypothesis, concurring the earlier interpretation, leading us to conclude that there is no statistically significant difference between the two studied groups D-penicillmain patients vs placebo ones.
+Returning a p-value even less significant than for the log-rank test, it prevents us from rejecting the null hypothesis, concurring the earlier interpretation, leading us to conclude that there is no statistically significant difference between the two studied groups D-penicillamin patients vs placebo ones.
 
 Another complementary approach to our study is to the association of survival to a quantitative variable which allowed by the Cox model as presented paragraph.
 
@@ -283,7 +280,7 @@ Also known as proportional hazard model, it conveniently accesses the effect of 
 
 While the log-rank test compares two Kaplan-Meier survival curves, which might be derived from splitting a patient population into treatment subgroups, Cox proportional hazards model regressions are derived from the underlying baseline hazard functions of the patient populations in question and an arbitrary number of dichotomized covariates. Again, it does not assume an underlying probability distribution but it assumes that the hazards of the patient groups you compare are constant over time.
 
-The reader be advised that our approach was first to process univariate Cox regressioins fitting the three covariates : sex, treatment & age. This would supposedly help us answer the question "Do specifically selected covariates (sex, treatment & age) independently and significantly impact survival and how?"
+The reader be advised that our approach was first to process univariate Cox regressions fitting the three covariates : sex, treatment & age. This would supposedly help us answer the question "Do specifically selected covariates (sex, treatment & age) independently and significantly impact survival and how?"
 
 Then processing a multivariate Cox regression on all the covariates of the sample in order to identify the most significant ones on patients' survival expectancy and then rerun a multivariate Cox regression on the selected covariates. This would help us answer the question "Which of covariates from the data set jointly and significantly impact survival and how?"
 
@@ -311,7 +308,7 @@ First, the "input p-value" indicates whereas there is a statistically significan
 
 Second, the statistical significance marked by the "z" column assessing whether the beta coefficient of a given variable is statistically significantly different from 0 by measuring each regression coefficient to its standard error. From the outputs above, we can conclude that both sex & age parameters have highly statistically significant coefficients.
 
-Third, the sign of the regression coefficient with a positive (negative) sign implying a higher (lower) hazard, with the specificity for variables encoded as numeric vectors, here as for sex parameter (1=male, 2=female) and treatment parameter (1=D-penicillmain, 2=placebo), that the coefficient assesses the second group relative to the first one. From the outputs above, we can state on one hand that with a beta of -0.49 indicates that females have lower risk of death than males and that on another hand older patients have a higher risk of death regarding biliary cirrhosis.
+Third, the sign of the regression coefficient with a positive (negative) sign implying a higher (lower) hazard, with the specificity for variables encoded as numeric vectors, here as for sex parameter (1=male, 2=female) and treatment parameter (1=D-penicillamin, 2=placebo), that the coefficient assesses the second group relative to the first one. From the outputs above, we can state on one hand that with a beta of -0.49 indicates that females have lower risk of death than males and that on another hand older patients have a higher risk of death regarding biliary cirrhosis.
 
 Fourth, the hazard ratio giving the effect size of covariates. From the outputs above we can state that being a female patient reduces the hazard by a factor of 0.61 or 39% thus associated with a relatively better prognostic and we can estimate that a 3.7% greater risk of death is associated with a 1-year increase in age at diagnosis.
 
@@ -329,7 +326,7 @@ First, this time the output gives p-values for three alternative tests for overa
 
 Then we observe six covariates being significant with some notable results : 
  - age parameter remains significant;
- - sex parameter failing to be significant (p-value = 0.95);
+ - sex parameter fails to be significant (p-value = 0.95);
  - the p-value for bili parameter (serum bilirunbin) is 0.000166 with hazard ratio of 1.88, allowing to estimate that holding all other covariates equal a 88% greater risk of death is associated with a 1mg increase by dl of blood at diagnosis.
 
 By contrast all covariates with confidence interval including 1 are not significant and thus rejected from our selection towards refined analysis.
@@ -377,6 +374,8 @@ Various other visualizations exist such as the function ggforest() from the surv
 ```{r}
 ggforest(coxph(survival ~ log(bili) + log(albumin) + ageBin, data = specimen))
 ```
+
+
 
 ## Diagnostic of Cox Model
 
