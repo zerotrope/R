@@ -354,12 +354,14 @@ log(copper)          0.368473   lower survival for higher copper parameter
 Having fit a Cox model to the data, it's possible to visualize the predicted survival proportion at any given point in time for a particular risk group. The function survfit() estimates the survival proportion, by default at the mean values of covariates.
 
 ```{r}
+# automatically visualizing the estimated distribution of survival times
 ggsurvplot(survfit(fit.coxph), data = specimen)
 ```
 
 A more manual approach allowed us to separate a baseline survivor model from the mean values of covariates. The reader be advised that mentionning the as.factor() function on the edema parameter heped fix the plot of the baseline.
 
 ```{r}
+# Manually visualizing the estimated distribution of survival times
 specimen.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1), protime=rep(1,1), copper=rep(1,1))
 # for baseline
 plot(survfit(fit.coxph, newdata=specimen.null), lwd=2,ylim=c(.99,1), main='Baseline survivor', xlab='Years', ylab='Survival', conf.int=T)
@@ -375,7 +377,7 @@ Various other visualizations exist such as the function ggforest() from the surv
 ggforest(coxph(survival ~ log(bili) + log(albumin) + ageBin, data = specimen))
 ```
 
-
+[INTERPRETE]
 
 ## Diagnostic of Cox Model
 
@@ -386,6 +388,10 @@ ftest <- cox.zph(fit.coxph)
 ftest
 ggcoxzph(ftest)
 ```
+
+The Schoenfeld Residuals Test is used to test the independence between residuals and time and hence is used to test the proportional Hazard assumption in Cox Model. It is analogous to testing whether the slope of scaled residuals on time is zero or not. If the slope is not zero then the proportional hazard assumption has been violated.
+
+Consequently a first observation we are expecting to a flat resulting curve in order to consider that the hazard ratio hypothesis (or instantaneous proportional risks hypothesis) is verified. Which happens to be the case for our selected covariates overall. And thus the Cox regression model can be validated.
 
 Additionally the function ggcoxdiagnostics() plots different types of residuals as a function of time, linear predictor or observation id. The type of residual is selected with type argument. Possible values are "martingale", "deviance", "score", "schoenfeld", "dfbeta"', "dfbetas", and "scaledsch". The ox.scale argument defines what shall be plotted on the OX axis. Possible values are "linear.predictions", "observation.id", "time". Logical arguments hline and sline may be used to add horizontal line or smooth line to the plot.
 
@@ -398,3 +404,4 @@ ggcoxdiagnostics(fit.coxph,
                  ox.scale = "time")
 ```
 
+Similarly is expected a returning curve (in blue) to be as flat as possible, distributed around 0 and the data to be homogeneously distributed on the graph in order to consider the hazard ratio hypothesis to validate the applied Cox model on the present data set. Which once again appear here to be the case overall.
