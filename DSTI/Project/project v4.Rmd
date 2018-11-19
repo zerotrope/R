@@ -56,7 +56,7 @@ In this work, we will mainly consider the following variables: age (in years), s
 
 ## Libraries importation
 
-We also ground the present document on various other packages for data presentation and visualization (ie. gglopt2, readr, glmnet ...etc.).
+We also ground the present document on various other packages for model elaboration (ie. glmnet, survival) and data presentation  (ie. gglopt2, readr, glmnet ...etc.).
 
 ```{r}
 library(ggplot2)
@@ -104,7 +104,7 @@ data$hepato <- factor(data$hepato)
 Printing the histogram of the age variable might help naively identifying gaps or cuts in its distribution. This would highlight the number of modes encompassed in the variable. Obvious gaps would suggest cutoffs on which basing age groups variable.
 
 ```{r}
-hist(data$age)
+hist(data$age, xlab="Age")
 ```
 
 We observe a properly distributed age variable with no cuts or gaps thus implying a ageGroup variable evenly distributed too.
