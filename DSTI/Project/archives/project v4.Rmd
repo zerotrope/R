@@ -1,0 +1,409 @@
+---
+title: "Survival Analysis project - Spring 18"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+authors: Melanie Pras Lucas
+---
+
+Steps 
+ - DONE // KM estimator 
+ - DONE // Plot logrank curves
+ - DONE // Plot cox baseline curves
+ - DONE // chain les coxph pour identifier les variables significatives
+ - analyse ggforest
+ - analyse de residuals
+ - truncation?
+ - predictions?
+ - bonus: comparaison de modeles
+
+-------------------------------------------------------------------------
+
+# Introduction
+
+Multiple tools and data for survival analysis are available in R packages such as "survival" from where we picked the PBC dataset. It comes from a clinical trial in the field of primary biliary cirrhosis conducted at the Mayo Clinic between 1974 and 1984. Primary biliary cirrhosis is a fatal chronic liver disease.
+
+A total of 418 PBC patients were randomized to either a placebo or a drug called Dpenicillamine. Each of them was followed until death or censoring (the duration is measured in days). The status at endpoint is coded as follows: 0/1/2 for censored, transplant and dead respectively. In addition, 17 covariates are recorded for this study. These include a treatment variable, patient age, gender and clinical, biochemical and histologic measurements made at the time of randomization.
+
+In this work, we will mainly consider the following variables: age (in years), serum albumin (g/dl), serum bilirubin (mg/dl), edema (0 if no edema, 0.5 if untreated or successfully treated and 1 if edema despite diuretic therapy) and prothrombin time (standardised blood clotting time).
+
+# Data preparation
+
+    Variable    Description
+    ----------  -----------------------------------
+    age:        in years
+    albumin:	  serum albumin (g/dl)
+    alk.phos:	  alkaline phosphotase (U/liter)
+    ascites:	  presence of ascites
+    ast:	      aspartate aminotransferase, once called SGOT (U/ml)
+    bili:	      serum bilirunbin (mg/dl)
+    chol:	      serum cholesterol (mg/dl)
+    copper:	    urine copper (ug/day)
+    edema:	    0 no edema, 0.5 untreated or successfully treated
+                1 edema despite diuretic therapy
+    hepato:	    presence of hepatomegaly or enlarged liver
+    id:	        case number
+    platelet:	  platelet count
+    protime:	  standardised blood clotting time
+    sex:	      m/f
+    spiders:	  blood vessel malformations in the skin
+    stage:	    histologic stage of disease (needs biopsy)
+    status:	    status at endpoint, 0/1/2 for censored, transplant, dead
+    time:	      number of days between registration and the earlier of death,
+                transplantion, or study analysis in July, 1986
+    trt:	      1/2/NA for D-penicillamin, placebo, not randomised
+    trig:	      triglycerides (mg/dl)
+    ----------  -----------------------------------
+
+## Libraries importation
+
+We also ground the present document on various other packages for model elaboration (ie. glmnet, survival) and data presentation  (ie. gglopt2, readr, glmnet ...etc.).
+
+```{r}
+library(ggplot2)
+library(survminer)
+library(readr)
+library(glmnet)
+library(survival)
+```
+
+## Data visualizations
+
+```{r}
+#head(pbc)
+#summary(pbc)
+#hist(pbc$stage)
+#table(pbc$stage)
+```
+
+## Specify event as status == "death"
+
+Declare data importation and event association to the death of the patient.
+Transplantation cases will not be of concerned in the context of a survival survival analysis, stricto sensu.
+
+```{r}
+# assign data set to a labelled object
+data <- pbc
+# create event parameter corresponding to death of the patient
+data$event <- 0 + (data$status == 2)
+```
+
+## Convert the future covariates into factor
+
+```{r}
+data$trt <- factor(data$trt)
+data$status <- factor(data$status)
+data$stage <- factor(data$stage)
+data$ascites <- factor(data$ascites)
+data$edema <- factor(data$edema)
+data$spiders <- factor(data$spiders)
+data$hepato <- factor(data$hepato)
+```
+
+## Create age intervals
+
+Printing the histogram of the age variable might help naively identifying gaps or cuts in its distribution. This would highlight the number of modes encompassed in the variable. Obvious gaps would suggest cutoffs on which basing age groups variable.
+
+```{r}
+hist(data$age, xlab="Age")
+```
+
+We observe a properly distributed age variable with no cuts or gaps thus implying a ageGroup variable evenly distributed too.
+
+```{r}
+data$ageGroup <- cut(data$age, breaks = c(0,10,20,30,40,50,60,70,80,90,Inf))
+table(data$ageGroup)
+```
+
+## Input some missing values
+
+Few missing values including for some future covariates invited us to apply linear model predictions.
+
+```{r}
+# cholesterol
+fit.chol <- (lm(chol ~ age, data = data))
+data$chol[is.na(data$chol)] <-
+  predict(fit.chol, newdata = subset(data, is.na(chol)))
+# copper
+fit.copper <- (lm(copper ~ age, data = data))
+data$copper[is.na(data$copper)] <-
+  predict(fit.copper, newdata = subset(data, is.na(copper)))
+# trig
+fit.trig <- (lm(trig ~ age, data = data))
+data$trig[is.na(data$trig)] <-
+  predict(fit.trig, newdata = subset(data, is.na(trig)))
+# platelet
+fit.platelet <- (lm(platelet ~ age, data = data))
+data$platelet[is.na(data$platelet)] <-
+  predict(fit.platelet, newdata = subset(data, is.na(platelet)))
+# check if NAs have been properly predicted
+summary(data)
+```
+
+# Exploratory analysis
+
+## Locate patients for survival analysis
+
+Our patient's type-profile encompasses :
+ - patients that followed a treatment, thus excluding the 106 patients that did not;
+ - patients concerned by the event of their death or consored, thus excluding the patients that were transplanted.
+
+```{r}
+specimen <- subset(data, data$trt != "NA" & data$status != 1)
+summary(specimen)
+```
+
+Getting a 293 observations data set on which we will run the survival analysis related tests as below.
+
+## Create survival objects
+
+Survival objects are created through the Surv(time, status) function from the "survival" package. To create right-censored data, this function needs two arguments:
+ - time: returns the observed duration in days;
+ - status: returns a boolean regarding whereas the observation corresponds to a censored one or not.
+
+In the situation where status returns more than two modalities or if the modalities are not returning a boolean conditioned by the fact that the observations are censored or not, the formula creating the survival object must precise the proper modalities corresponding to censored observations.
+
+```{r}
+survival <- Surv(specimen$time / 365.25, specimen$event)
+```
+
+Hereby computed with time alteration to show yearly-basis scale for lisibility purpose of the reader.
+
+## Kaplan-Meyer estimator - estimation of the survival function
+
+Also known as "product-limit estimator", the Kaplan-Meyer estimator (KM) is a non-parametric statistic (ie. not based on the assumption of an underlying probability distribution) that allows us to estimate the survival function. It gives the probability that an individual patient will survive past a particular time t. It is based on the assumption that the probability of surviving past a certain time point t is equal to the product of the observed survival rates until time point t. 
+
+It is similar to the censoring version of empirical survival function, generating a stair-step curve but not accounting for effect of other covariates.
+
+In R, the estimation of a survival function through the use of a survival object (ie. from censored data) is done thanks to the survfit(Surv(time, status), data) function of the "survival" package.
+
+```{r}
+KM <- survfit(survival ~ 1, data = specimen)
+KM
+ggsurvplot(KM, xlab="Survival Years", ylab="Kaplan-Meyer Estimator")
+```
+
+The KM test here returns a median survival of 8.99 years, the moment at which 50% of the patients were alive and 50% were reaching the event point ie. here, death. On a broader note, the reader may be interested in visualizing the survival regarding other parameters. This can be realised by crossing the survival object with the specific parameters through additional KM tests. 
+
+Interesting parameters to be confronted to survival may be the sex parameter, the treatment parameter and the age parameter, the later requiring a preparation to its study (ie. "binarizing" the sample into "younger" vs "older" patients for example).
+
+Considering the sex parameter first :
+
+```{r}
+# fitting the survival to sex parameter
+fit.sex <- survfit(survival ~ sex, data = specimen)
+## visualizing the survival probability
+ggsurvplot(fit.sex, 
+           data = specimen, 
+           xlab = "Years",
+           conf.int = FALSE,
+           pval = TRUE,
+           legend = "top",
+           legend.title = "Sex",
+           legend.labs = c("Male", "Female"))
+```
+
+Additionally to the general shape of the curves, the reader might be interested in the p-value shown at the bottom-left of the figure which is the corresponding log-rank test p-value result. Here statistically significant, as under an arbitrary threshold of 5% (corresponding to a 95% confidence interval) it conveys enough significance to reject the log-rank null hypothesis and affirm that the two groups, here male & female, survive differently to the biliary cirrhosis. 
+
+Explicitly, the present figure shows that men have a worse survival expectancy than women to biliary cirrhosis. We also note the number of censored data for female patients appear to be superior to the ones of male patients, naively said to be concuring the above results.
+
+Now considering the treatment parameter (D-penicillamin vs. placebo) :
+
+```{r}
+# fitting the survival to treatment parameter
+fit.trt <- survfit(survival ~ trt, data = specimen)
+## visualizing the survival probability
+ggsurvplot(fit.trt, 
+           data = specimen, 
+           xlab = "Years",
+           conf.int = FALSE,
+           pval = TRUE,
+           legend = "top",
+           legend.title = "Treatment",
+           legend.labs = c("D-penicillamin", "Placebo"))
+```
+
+As the reader might visually build an intuition of the difference in treatment parameter, the resulting non-significant p-value (79%) indicates that there is not enough statistical material in order to reject the null hypothesis and thus leads us to conclude that there is no significant difference between both treatment protocols. Explicitly, whereas taking a D-penicillamin treatment or a placebo treatment has no impact on patients' survival expectancy.
+
+Another visualization useful for the reader might be the study of the survival object regarding the age parameter. As stated earlier it appeared necessary to us to retreat the age parameter in order to make it senseful to the KM and log-rank tests by "binarizing" it as the following :
+
+```{r}
+# age parameter retreatment named "ageBin" parameter
+specimen$ageBin <- ifelse(specimen$age > 50, ">50", "<=50")
+# converting the ageBin parameter into factor
+specimen$ageBin <- as.factor(specimen$ageBin)
+# fitting the survival to the new age parameter
+fit.age <- survfit(survival ~ ageBin, data = specimen)
+## visualizing the survival probability
+ggsurvplot(fit.age, 
+           data = specimen, 
+           xlab = "Years",
+           conf.int = FALSE,
+           pval = TRUE,
+           legend = "top",
+           legend.title = "Age",
+           legend.labs = c("Youngers (<=50)", "Olders (>50)"))
+```
+
+Here again as the reader may have an intuition of the potential difference in survival regarding the age parameter as shown by the shapes of the curves, the resulting p-value (0.028%) indicates that there exists a statistically significant difference in the survival of the two groups segmented through the age parameter. Explicitly the "olders", the patients who's age is greater than fifty years old, have a worse survival expectancy over time than the "youngers" the patients who's age is lower or equal to fifty years old.
+
+The provided p-value to the KM visualization of the survival object has introduced the reader to the observation of differences in some parameters variable to be explicited in the Mantel-Haenzel test, also called the log-rank test.
+
+## Mantel-Haenzel test - comparing two groups' own survival
+
+Also known as log-rank test, it is a statistical hypothesis test that tests the null hypothesis that survival curves of two populations do not differ. It will output an indicator of the two groups being significantly different in terms of survival when its p-value will be inferior to risk threshold.
+
+It is generated from a sequence of 2 by 2 tables measuring conditional independence. It is efficient in comparing groups differed by categorical variables, but not continuous ones. Its validity conditions might appear quite delicate to the reader as the log-rank test, to be considered as applicable require or an important number of death times which mathcs the situation of our sample study, or an important number of deads at each death time.
+
+```{r}
+MH <- survdiff(survival ~ specimen$trt)
+MH
+```
+
+The log-rank test returning a non-significant p-value (80%) indicates that we do not have enough elements to reject the null hypothesis allowing us to interprete that there is no statistically significant difference between the two treatments. Concurring our earlier interpretation, whereas a patient was administered D-penicillamin or a placebo had no impact on the patient's survival expectancy.
+
+An alternative test, the Wilcoxon test may be applied in order to compare the significance of the result with the one from the log-rank test. However the reader will be advised that :
+ - the log-rank test is more effective when the survival curves do not cross each other;
+ - when instantaneous hazard rates are proportional, the log-rank test is the "best" to be run.
+ 
+```{r}
+W <- survdiff(survival ~ specimen$trt, rho=1)
+W
+```
+
+Returning a p-value even less significant than for the log-rank test, it prevents us from rejecting the null hypothesis, concurring the earlier interpretation, leading us to conclude that there is no statistically significant difference between the two studied groups D-penicillamin patients vs placebo ones.
+
+Another complementary approach to our study is to the association of survival to a quantitative variable which allowed by the Cox model as presented paragraph.
+
+## Cox Model
+
+Also known as proportional hazard model, it conveniently accesses the effect of continuous and categorical variable using partial likelihood to get inference even without knowledge of baseline hazard.
+
+While the log-rank test compares two Kaplan-Meier survival curves, which might be derived from splitting a patient population into treatment subgroups, Cox proportional hazards model regressions are derived from the underlying baseline hazard functions of the patient populations in question and an arbitrary number of dichotomized covariates. Again, it does not assume an underlying probability distribution but it assumes that the hazards of the patient groups you compare are constant over time.
+
+The reader be advised that our approach was first to process univariate Cox regressions fitting the three covariates : sex, treatment & age. This would supposedly help us answer the question "Do specifically selected covariates (sex, treatment & age) independently and significantly impact survival and how?"
+
+Then processing a multivariate Cox regression on all the covariates of the sample in order to identify the most significant ones on patients' survival expectancy and then rerun a multivariate Cox regression on the selected covariates. This would help us answer the question "Which of covariates from the data set jointly and significantly impact survival and how?"
+
+First then, we want to describe if and how the sex, treatment & age parameters independently impact on survival:
+
+```{r}
+# univariate cox regression on sex parameter
+cox.sex <- coxph(survival ~ sex, data = specimen)
+cox.sex
+```
+
+```{r}
+# univariate cox regression on treatment parameter
+cox.trt <- coxph(survival ~ trt, data = specimen)
+cox.trt
+```
+
+```{r}
+# univariate cox regression on age parameter
+cox.age <- coxph(survival ~ age, data = specimen)
+cox.age
+```
+
+First, the "input p-value" indicates whereas there is a statistically significant association between a given variable and the hazard (risk of the event, here death). From the outputs above, we can state that both sex & age parameters have a statistically significant association with the hazard of the patients produced by biliary cirrhosis (ie. p-value of 3.9% & c.0% respectively).
+
+Second, the statistical significance marked by the "z" column assessing whether the beta coefficient of a given variable is statistically significantly different from 0 by measuring each regression coefficient to its standard error. From the outputs above, we can conclude that both sex & age parameters have highly statistically significant coefficients.
+
+Third, the sign of the regression coefficient with a positive (negative) sign implying a higher (lower) hazard, with the specificity for variables encoded as numeric vectors, here as for sex parameter (1=male, 2=female) and treatment parameter (1=D-penicillamin, 2=placebo), that the coefficient assesses the second group relative to the first one. From the outputs above, we can state on one hand that with a beta of -0.49 indicates that females have lower risk of death than males and that on another hand older patients have a higher risk of death regarding biliary cirrhosis.
+
+Fourth, the hazard ratio giving the effect size of covariates. From the outputs above we can state that being a female patient reduces the hazard by a factor of 0.61 or 39% thus associated with a relatively better prognostic and we can estimate that a 3.7% greater risk of death is associated with a 1-year increase in age at diagnosis.
+
+Finally, the global statistical significance of the model is brought by the "output p-value" given for overall significance of the model, the likelihood-ratio test. From the outputs above, we can state that the p-value being associated to c.0%, the model is indeed significant.
+
+Now, we want to describe how the factors jointly impact on survival. To answer to this question, we'll perform a multivariate Cox regression analysis. As the treatment parameter is not significant in the univariate Cox analysis, we'll skip it in the multivariate analysis.
+
+```{r}
+# multivariate cox regression
+coxph <- coxph(survival  ~ age + edema + hepato + platelet + sex + spiders + ascites + log(albumin) + log(alk.phos) + log(ast) + log(bili) + log(chol) + log(copper) + log(trig) + log(protime), data = specimen)
+summary(coxph)
+```
+
+First, this time the output gives p-values for three alternative tests for overall significance of the model: the likelihood-ratio test, Wald test, and score logrank statistics. These three methods are asymptotically equivalent. For large enough N, they will give similar results. For small N, they may differ somewhat, literature indicating the likelihood-ratio test would be preferred in such case. From the output above we observe that for all three overall tests the p-value is significant thus indicating the model is indeed significant. These tests evaluate the null hypothesis that all of the beta coefficients are 0. Here the test statistics are in close agreement, and th null hypothesis is soundly rejected.
+
+Then we observe six covariates being significant with some notable results : 
+ - age parameter remains significant;
+ - sex parameter fails to be significant (p-value = 0.95);
+ - the p-value for bili parameter (serum bilirunbin) is 0.000166 with hazard ratio of 1.88, allowing to estimate that holding all other covariates equal a 88% greater risk of death is associated with a 1mg increase by dl of blood at diagnosis.
+
+By contrast all covariates with confidence interval including 1 are not significant and thus rejected from our selection towards refined analysis.
+
+```{r}
+# multivariate Cox regression with significant covariates only
+fit.coxph <- coxph(survival  ~ age + as.factor(edema) + log(albumin) + log(bili) + log(protime) + log(copper), data = specimen)
+summary(fit.coxph)
+```
+
+The model holding its overall significance according to the "output p-values" the three tests (likelihood, Wald, and score), additional notable results are to be reported to the reader :
+ - all covariates remain significant;
+ - with an ever closer to 0% p-value and a still extremely high hazard ratio bili parameter keeps its position of most significant and affective covariate on survival. The reader be invited to precaution regarding such results especially its reported hazard ratio being probably the consequence of the unit scale in which bili parameter is measured (mg/dl) as an increase of 1mg/dl might be a very unlikely phenomenon;
+ - also significant (p-value = 0.5%) protime parameter reports a suspiciously high hazard ratio of 21.83 which may be explained by the fact that time parameter has been converted from days to years for in the earlier steps of the present study. As a consequence, protime should not be considered for further analysis in our opinion.
+ 
+Our approach helped us identify the most significant covariates to survival of the present data set. A naive interpretation of our final selection of the most significant continuous covariates may look like the following :
+
+                    Beta coef   interpretation   
+age                  0.029276   lower survival for higher age
+log(albumin)        -2.825567   higher survival for higher albumin parameter
+log(bili)            0.745536   lower survival for higher bili parameter
+log(copper)          0.368473   lower survival for higher copper parameter
+
+
+Having fit a Cox model to the data, it's possible to visualize the predicted survival proportion at any given point in time for a particular risk group. The function survfit() estimates the survival proportion, by default at the mean values of covariates.
+
+```{r}
+# automatically visualizing the estimated distribution of survival times
+ggsurvplot(survfit(fit.coxph), data = specimen)
+```
+
+A more manual approach allowed us to separate a baseline survivor model from the mean values of covariates. The reader be advised that mentionning the as.factor() function on the edema parameter heped fix the plot of the baseline.
+
+```{r}
+# Manually visualizing the estimated distribution of survival times
+specimen.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1), protime=rep(1,1), copper=rep(1,1))
+# for baseline
+plot(survfit(fit.coxph, newdata=specimen.null), lwd=2,ylim=c(.99,1), main='Baseline survivor', xlab='Years', ylab='Survival', conf.int=T)
+# for mean covariates
+plot(survfit(fit.coxph),lwd=2,main= 'Fitted survivor at mean covariates', xlab='Years', ylab='Survival')
+```
+
+Here returning a unique curve for all the patients in the data set with a confidence interval.
+
+Various other visualizations exist such as the function ggforest() from the survminer package which creates a forest plot for a Cox regression model fit. Hazard ratio estimates along with confidence intervals and p-values are plotter for each variable. Here we plot the forest for the three most significant covariates : age, bili and albumin parameters.
+
+```{r}
+ggforest(coxph(survival ~ log(bili) + log(albumin) + ageBin, data = specimen))
+```
+
+[INTERPRETE]
+
+## Diagnostic of Cox Model
+
+The function cox.zph() from survival package may be used to test the proportional hazards assumption for a Cox regression model fit. The graphical verification of this assumption may be performed with the function ggcoxzph() from the survminer package. For each covariate it produces plots with scaled Schoenfeld residuals against the time. 
+
+```{r}
+ftest <- cox.zph(fit.coxph)
+ftest
+ggcoxzph(ftest)
+```
+
+The Schoenfeld Residuals Test is used to test the independence between residuals and time and hence is used to test the proportional Hazard assumption in Cox Model. It is analogous to testing whether the slope of scaled residuals on time is zero or not. If the slope is not zero then the proportional hazard assumption has been violated.
+
+Consequently a first observation we are expecting to a flat resulting curve in order to consider that the hazard ratio hypothesis (or instantaneous proportional risks hypothesis) is verified. Which happens to be the case for our selected covariates overall. And thus the Cox regression model can be validated.
+
+Additionally the function ggcoxdiagnostics() plots different types of residuals as a function of time, linear predictor or observation id. The type of residual is selected with type argument. Possible values are "martingale", "deviance", "score", "schoenfeld", "dfbeta"', "dfbetas", and "scaledsch". The ox.scale argument defines what shall be plotted on the OX axis. Possible values are "linear.predictions", "observation.id", "time". Logical arguments hline and sline may be used to add horizontal line or smooth line to the plot.
+
+```{r}
+ggcoxdiagnostics(fit.coxph,
+                 type = "deviance",
+                 ox.scale = "time")
+ggcoxdiagnostics(fit.coxph,
+                 type = "schoenfeld",
+                 ox.scale = "time")
+```
+
+Similarly is expected a returning curve (in blue) to be as flat as possible, distributed around 0 and the data to be homogeneously distributed on the graph in order to consider the hazard ratio hypothesis to validate the applied Cox model on the present data set. Which once again appear here to be the case overall.

@@ -1,0 +1,314 @@
+---
+title:      "Survival Analysis project - Spring 18"
+authors:    Melanie 
+            Pras
+            Lucas
+---
+
+Steps 
+ - CHECK // drop les predict actuels
+ - CHECK // split data set 312 : train(70%) validation(30%)
+ - CHECK // predict treatment on validation set with linear model
+ - predict event death : test R² ou MAPE pour validation du modèle
+ - predict sur les 106 test set
+ - concatene tout le dataset complet (train+valid+test)
+ - KM + logrank = interprétation
+ - check logrank curves pour troncate (juste un commentaire à faire), check jour Antonio Truncation video
+ - chain les coxph pour identifier les variables significatives
+ - analyse de résiduals
+ - bonus: comparaison de modèles
+ 
+Questions
+ - coxph au début pour identifier les paramètres significatifs?
+ - interprétation MAPE & R²?
+ - on veut prédire le traitement ou la mort des 106?
+ 
+-------------------------------------------------------------------------
+
+# Introduction
+
+Multiple tools and data for survival analysis are available in R packages such as "survival" from where we picked the PBC dataset. It comes from a clinical trial in the field of primary biliary cirrhosis conducted at the Mayo Clinic between 1974 and 1984. Primary biliary cirrhosis is a fatal chronic liver disease.
+
+A total of 418 PBC patients were randomized to either a placebo or a drug called Dpenicillamine. Each of them was followed until death or censoring (the duration is measured in days). The status at endpoint is coded as follows: 0/1/2 for censored, transplant and dead respectively. In addition, 17 covariates are recorded for this study. These include a treatment variable, patient age, gender and clinical, biochemical and histologic measurements made at the time of randomization.
+
+In this work, we will mainly consider the following variables: age (in years), serum albumin (g/dl), serum bilirubin (mg/dl), edema (0 if no edema, 0.5 if untreated or successfully treated and 1 if edema despite diuretic therapy) and prothrombin time (standardised blood clotting time).
+
+# Data preparation
+
+    Variable    Description
+    ----------  -----------------------------------
+    age:        in years
+    albumin:	  serum albumin (g/dl)
+    alk.phos:	  alkaline phosphotase (U/liter)
+    ascites:	  presence of ascites
+    ast:	      aspartate aminotransferase, once called SGOT (U/ml)
+    bili:	      serum bilirunbin (mg/dl)
+    chol:	      serum cholesterol (mg/dl)
+    copper:	    urine copper (ug/day)
+    edema:	    0 no edema, 0.5 untreated or successfully treated
+                1 edema despite diuretic therapy
+    hepato:	    presence of hepatomegaly or enlarged liver
+    id:	        case number
+    platelet:	  platelet count
+    protime:	  standardised blood clotting time
+    sex:	      m/f
+    spiders:	  blood vessel malformations in the skin
+    stage:	    histologic stage of disease (needs biopsy)
+    status:	    status at endpoint, 0/1/2 for censored, transplant, dead
+    time:	      number of days between registration and the earlier of death,
+                transplantion, or study analysis in July, 1986
+    trt:	      1/2/NA for D-penicillmain, placebo, not randomised
+    trig:	      triglycerides (mg/dl)
+    ----------  -----------------------------------
+
+## Libraries importation
+
+We also ground the present document on various other packages for data presentation and visualization (ie. gglopt2, readr, glmnet ...etc.).
+
+```{r}
+library(ggplot2)
+library(readr)
+library(glmnet)
+library(survival)
+?pbc
+```
+
+## Data visualizations
+
+```{r}
+#head(pbc)
+#summary(pbc)
+#hist(pbc$stage)
+#table(pbc$stage)
+```
+
+## Specify event as status == "death"
+
+Declare data importation and event association to the death of the patient.
+Transplantation cases will not be of concerned in the context of a survival survival analysis, stricto sensu.
+
+```{r}
+# assign data set to a labelled object
+data <- pbc
+# create event parameter corresponding to death of the patient
+data$event <- 0 + (data$status == 2)
+```
+
+## Convert all categorical data of the data set
+
+```{r}
+data$trt <- factor(data$trt)
+data$status <- factor(data$status)
+data$stage <- factor(data$stage)
+data$ascites <- factor(data$ascites)
+data$edema <- factor(data$edema)
+data$spiders <- factor(data$spiders)
+```
+
+## Create age intervals
+
+```{r}
+hist(data$age)
+data$ageGroup <- cut(data$age, breaks = c(0,10,20,30,40,50,60,70,80,90,Inf))
+table(data$ageGroup)
+```
+
+## Input some missing values
+
+```{r}
+# cholesterol
+fit.chol <- (lm(chol ~ age, data = data))
+data$chol[is.na(data$chol)] <-
+  predict(fit.chol, newdata = subset(data, is.na(chol)))
+# copper
+fit.copper <- (lm(copper ~ age, data = data))
+data$copper[is.na(data$copper)] <-
+  predict(fit.copper, newdata = subset(data, is.na(copper)))
+# trig
+fit.trig <- (lm(trig ~ age, data = data))
+data$trig[is.na(data$trig)] <-
+  predict(fit.trig, newdata = subset(data, is.na(trig)))
+# platelet
+fit.platelet <- (lm(platelet ~ age, data = data))
+data$platelet[is.na(data$platelet)] <-
+  predict(fit.platelet, newdata = subset(data, is.na(platelet)))
+# check if NAs have been properly predicted
+summary(data)
+```
+
+## Generate train, validation & test sets
+
+Train (70%) and validation (30%) sets from the original 312 observations of patients that were treated. Test set to be the 106 observations of patients reporting their data that never enrolled into treatment protocol and for which we aim to predict their corresponding protocol through our model elaborated on train & validate sets.
+
+```{r}
+# set the split proportion between train & validate sets, here 70% & 30% respectively
+share = c(train = .7, validate = .3)
+# create split function
+g = sample(cut(
+  seq(nrow(subset(data, data$trt != "NA"))), 
+  nrow(subset(data, data$trt != "NA"))*cumsum(c(0,share)),
+  labels = names(share)
+))
+# apply split function on treated patients data set
+protocol = split(subset(data, data$trt != "NA"), g)
+# assign each set to clearly labelled objects
+train <- protocol$train
+validate <- protocol$validate
+test <- subset(data, is.na(data$trt))
+# check if split properly
+addmargins(prop.table(table(g)))
+```
+
+/*
+  protocol <- subset(data, data$trt != "NA")
+  test <- subset(data, is.na(data$trt))
+*/
+
+## Fitting a linear model to our train set
+
+```{r}
+fit.train.linear <- (lm(event ~ trt, data = train))
+validate.linear <- as.numeric(predict(fit.train.linear, newdata = validate))
+summary(fit.train.linear)
+```
+
+## Measure of prediction accuracy through "R-squared"
+
+```{r}
+validate.linear.Rsquared <- summary(fit.train.linear)$r.squared
+validate.linear.AdjRsquared <- summary(fit.train.linear)$adj.r.squared
+```
+
+Both close to 0.
+
+## Measure of prediction accuracy through "Mean Absolute Percentage Error"
+
+```{r}
+actual <- as.numeric(c(validate$trt))
+str(actual)
+str(validate.linear)
+```
+
+```{r}
+mape <- function(y, yhat)
+{
+  mean(abs((y - yhat)/y))
+}
+validate.linear.mape <- mape(actual, validate.linear)
+```
+
+Returning a MAPE score of c. 0.68.
+
+## Fitting a logistic regression model to our train set & prediction on our validation set
+
+```{r}
+fit.train.logistic <- glm(event ~ trt, data = train, family = 'binomial')
+validate.logistic <- as.numeric(predict(fit.train.logistic, newdata = validate))
+summary(fit.train.logistic)
+```
+
+## Measure of prediction accuracy through "Mean Absolute Percentage Error"
+
+```{r}
+validate.logistic.mape <- mape(actual, validate.logistic)
+```
+
+Returning a MAPE score of c. 1.25
+
+/*
+  By having separated the complete pbc data set into one train set of the 312 observations of patients that took a treatment   (Dpenicillamine vs placebo) on one hand and a test set of 106 observations of patients that never took a treatment on the    other hand, additionally to having managed the residual NAs contained in the train test for full data cleansing we allow     ourself to proceed to exploratory analysis.
+*/
+
+## Predictions on the test set
+
+```{r}
+# linear predictions
+# logistic predictions
+# on what??
+```
+
+# Exploratory analysis
+
+## integrate a dependent variable y as the survival in months to data set
+
+```{r}
+train$y <- with(train, Surv(time / 30.5, event))
+head(train)
+summary(train$y)
+```
+
+## Create survival objects
+
+Survival objects are created through the Surv(time, status) function from the "survival" package. To create right-censored data, this function needs two arguments:
+ - time: returns the observed duration in days;
+ - status: returns a boolean regarding whereas the observation corresponds to a censored one or not.
+
+In the situation where status returns more than two modalities or if the modalities are not returning a boolean conditioned by the fact that the observations are censored or not, the formula creating the survival object must precise the proper modalities corresponding to censored observations.
+
+/*
+  Here with two time ranges, in days as by default in the data set and in
+  months as computed ad hoc for lisibility
+*/
+
+```{r}
+survdays <- Surv(train$time, train$event)
+#survmonths <- Surv(train$time / 30.5, train$event)
+#survdays
+#survmonths
+```
+
+## Kaplan-Meyer estimator - estimation of the survival function
+
+Also known as "product-limit estimator", the Kaplan-Meyer estimator (KM) is a non-parametric statistic that allows us to estimate the survival function. It gives the probability that an individual patient will survive past a particular time t. It is based on the assumption that the probability of surviving past a certain time point t is equal to the product of the observed survival rates until time point t.
+It is similar to the censoring version of empirical survival function, generating a stair-step curve but not accounting for effect of other covariates.
+In R, the estimation of a survival function through the use of a survival object (ie. from censored data) is done thanks to the survfit(Surv(time, status), data) function of the "survival" package.
+
+```{r}
+KMdays <- survfit(survdays ~ 1, data = train)
+KMmonths <- survfit(survmonths ~ 1, data = train)
+plot(KMdays)
+plot(KMmonths)
+```
+
+## Mantel-Haenzel test - comparing two groups' own survival
+
+Also known as log-rank test, it is a statistical hypothesis test that tests the null hypothesis that survival curves of two populations do not differ. It will output an indicator of the two groups veing significantly different in terms of survival when its p-value will be inferior to risk threshold.
+It is generated from a sequence of 2 by 2 tables measuring conditional independence. It is efficient in comparing groups differed by categorical variables, but not continuous ones.
+In R, 
+
+```{r}
+logrankdays <- survdiff(survdays ~ train$trt)
+logrankmonths <- survdiff(survmonths ~ train$trt)
+#plot(logrankdays)
+#plot(logrankmonths)
+```
+
+## Cox Model
+
+Also known as proportional hazard model, conveniently accesses the effect of continuous and categorical variable using partial likelihood to get inference even without knowledge of baseline hazard.
+Note that the assumption is strong.
+
+```{r}
+fit.coxph.days <- coxph(survdays  ~ age + edema + log(bili) + log(albumin) + log(protime), data = train)
+fit.coxph.months <- coxph(survmonths  ~ age + edema + log(bili) + log(albumin) + log(protime), data = train)
+summary(fit.coxph.days)
+summary(fit.coxph.months)
+```
+
+Visualizing the model:
+
+```{r}
+data.null<-data.frame(age=rep(0,1), edema=rep(0,1), bili=rep(1,1), albumin=rep(1,1),protime=rep(1,1))
+
+#plot(survfit(fit.coxph.days, newdata=data.null), lwd=2,ylim=c(.99,1), main='baseline survivor', xlab='Days', ylab='Survival', conf.int=T)
+#plot(survfit(fit.coxph.months, newdata=data.null), lwd=2,ylim=c(.99,1), main='baseline survivor', xlab='Months', ylab='Survival', conf.int=T)
+
+plot(survfit(fit.coxph.days),lwd=2,main= 'fitted survival function at mean covariates', xlab='Days', ylab='Survival')
+plot(survfit(fit.coxph.months),lwd=2,main= 'fitted survival function at mean covariates', xlab='Months', ylab='Survival')
+```
+
+## Diagnostic of Cox Model
+
+```{r}
+
+```
