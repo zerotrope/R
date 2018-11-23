@@ -5,15 +5,15 @@ author:
 - Lucas Lassus, Mélanie Maharjan and Prashanth Pushparasah
 - Data ScienceTech Institute Spring-18
 output:
+  html_document:
+    df_print: paged
+    toc: yes
   pdf_document:
     keep_tex: yes
     number_sections: yes
     toc: yes
     fig_width: 4.5 
     fig_height: 3.5 
-  html_document:
-    df_print: paged
-    toc: yes
 ---
 
 # Introduction
