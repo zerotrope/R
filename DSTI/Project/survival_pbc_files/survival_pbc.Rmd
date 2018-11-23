@@ -5,15 +5,15 @@ author:
 - Lucas Lassus, Mélanie Maharjan and Prashanth Pushparasah
 - Data ScienceTech Institute Spring-18
 output:
-  html_document:
-    df_print: paged
-    toc: yes
   pdf_document:
     keep_tex: yes
     number_sections: yes
     toc: yes
     fig_width: 4.5 
     fig_height: 3.5 
+  html_document:
+    df_print: paged
+    toc: yes
 ---
 
 # Introduction
@@ -343,9 +343,10 @@ Six covariates appeared to be significant with some notable results:
 
 * age parameter remained significant;
 * sex parameter failed to be significant (p-value = 0.95);
-* the p-value for bili parameter (serum bilirunbin) returned 0.000166 with hazard ratio of 1.88, allowing to estimate that, holding all other covariates equal, a 88% greater risk of death is associated with a 1mg increase by dl of blood at diagnosis.
+* the p-value for bili parameter (serum bilirunbin) returned 0.000166 with hazard ratio of 1.88, allowing to estimate that, holding all other covariates equal, a 88% greater risk of death is associated with a 1mg increase by dl of blood at diagnosis;
+* although significant (p-value = 0.5%) protime parameter reported a suspiciously high hazard ratio of 21.83 which may be explained by the fact that time parameter has been converted from days to years for reader lisibility in the earlier steps of the present study. The reader be advised to keep this observation in mind for further analysis.
 
-By contrast all covariates with confidence interval including 1 were not significant and thus rejected from the selection towards refined analysis.
+By contrast all covariates with confidence interval including 1 were not significant and thus rejected from the selection towards refined analysis. Resulting in five finally selected covariates.
 
 ```{r}
 # multivariate Cox regression with significant covariates only
@@ -359,8 +360,7 @@ summary(fit.coxph)
 The model held its overall significance according to the "output p-values" returned by the three tests (likelihood, Wald, and score) and additional notable results were to be reported to the reader:
 
 * all covariates remain significant;
-* with an ever closer to 0% p-value and a still extremely high hazard ratio bili parameter kept its position of most significant and affective covariate on survival. The reader be invited to precaution regarding such results especially its reported hazard ratio being probably the consequence of the unit scale in which bili parameter is measured (mg/dl) as an increase of 1mg/dl might be a very unlikely phenomenon;
-* also significant (p-value = 0.5%) protime parameter reported a suspiciously high hazard ratio of 21.83 which may be explained by the fact that time parameter has been converted from days to years for reader lisibility in the earlier steps of the present study. As a consequence, protime was not considered for further analysis.
+* with an ever closer to 0% p-value and a still extremely high hazard ratio bili parameter kept its position of most significant and affective covariate on survival. The reader be invited to precaution regarding such results especially its reported hazard ratio being probably the consequence of the unit scale in which bili parameter is measured (mg/dl) as an increase of 1mg/dl might be a very unlikely phenomenon.
  
 The present approach helped identifying the most significant covariates to survival of the present data set. A naive interpretation of the final selection of the most significant continuous covariates may look like the following:
 
@@ -414,16 +414,17 @@ ggcoxzph(ftest, font.main=8, font.x =  8, font.y = 8, font.tickslab = 8)
 
 The Schoenfeld Residuals Test is used to test the independence between residuals and time and hence is used to test the proportional Hazard assumption in Cox Model. It is analogous to testing whether the slope of scaled residuals on time is zero or not. If the slope is not zero then the proportional hazard assumption has been violated.
 
-Consequently a first observation we are expecting to a flat resulting curve in order to consider that the hazard ratio hypothesis (or instantaneous proportional risks hypothesis) is verified. Which happens to be the case for our selected covariates overall. And thus the Cox regression model was validated.
+Consequently a first observation we are expecting to a flat resulting curve in order to consider that the hazard ratio hypothesis (or instantaneous proportional risks hypothesis) is verified. Which happens to be the case for our selected covariates overall. 
+However the p-value returned by the global schoenfeld test is not statistically significant (9%) and thus questions the graphical interpretation of the applicability of Cox Model regressions on the present data set. 
 
-Additionally the function ggcoxdiagnostics() plots different types of residuals. The reader may be especially interested in the diagnostics of "deviance" for its clarity as providing an overall diagniostic by returning a unique plot for all selected covariates.
+An additionnal test may provide the reader with further argument as the function ggcoxdiagnostics() plots different types of residuals. The reader may be especially interested in the diagnostics of "deviance" for its clarity as providing an overall diagniostic by returning a unique plot for all selected covariates.
 
 ```{r fig.height=5, fig.width=7}
 # deviance vs. time
 ggcoxdiagnostics(fit.coxph, type = "deviance", ox.scale = "time")
 ```
 
-Similarly the returning curve (in blue) was expected to be as flat as possible, distributed around 0 and the data to be homogeneously distributed on the graph in order to consider the hazard ratio hypothesis to validate the applied Cox model on the studied data set. Which once again appeared to be the case overall.
+Similarly the returning curve (in blue) was expected to be as flat as possible, distributed around 0 (in red) and the data to be homogeneously distributed on the graph in order to consider the hazard ratio hypothesis to validate the applied Cox model on the studied data set. Which once again appeared to be the case overall.
 
 # Conclusion
 

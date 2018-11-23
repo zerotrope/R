@@ -733,12 +733,19 @@ Six covariates appeared to be significant with some notable results:
   the p-value for bili parameter (serum bilirunbin) returned 0.000166
   with hazard ratio of 1.88, allowing to estimate that, holding all
   other covariates equal, a 88\% greater risk of death is associated
-  with a 1mg increase by dl of blood at diagnosis.
+  with a 1mg increase by dl of blood at diagnosis;
+\item
+  although significant (p-value = 0.5\%) protime parameter reported a
+  suspiciously high hazard ratio of 21.83 which may be explained by the
+  fact that time parameter has been converted from days to years for
+  reader lisibility in the earlier steps of the present study. The
+  reader be advised to keep this observation in mind for further
+  analysis.
 \end{itemize}
 
 By contrast all covariates with confidence interval including 1 were not
 significant and thus rejected from the selection towards refined
-analysis.
+analysis. Resulting in five finally selected covariates.
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -797,13 +804,7 @@ additional notable results were to be reported to the reader:
   regarding such results especially its reported hazard ratio being
   probably the consequence of the unit scale in which bili parameter is
   measured (mg/dl) as an increase of 1mg/dl might be a very unlikely
-  phenomenon;
-\item
-  also significant (p-value = 0.5\%) protime parameter reported a
-  suspiciously high hazard ratio of 21.83 which may be explained by the
-  fact that time parameter has been converted from days to years for
-  reader lisibility in the earlier steps of the present study. As a
-  consequence, protime was not considered for further analysis.
+  phenomenon.
 \end{itemize}
 
 The present approach helped identifying the most significant covariates
@@ -937,13 +938,16 @@ the proportional hazard assumption has been violated.
 Consequently a first observation we are expecting to a flat resulting
 curve in order to consider that the hazard ratio hypothesis (or
 instantaneous proportional risks hypothesis) is verified. Which happens
-to be the case for our selected covariates overall. And thus the Cox
-regression model was validated.
+to be the case for our selected covariates overall. However the p-value
+returned by the global schoenfeld test is not statistically significant
+(9\%) and thus questions the graphical interpretation of the
+applicability of Cox Model regressions on the present data set.
 
-Additionally the function ggcoxdiagnostics() plots different types of
-residuals. The reader may be especially interested in the diagnostics of
-``deviance'' for its clarity as providing an overall diagniostic by
-returning a unique plot for all selected covariates.
+An additionnal test may provide the reader with further argument as the
+function ggcoxdiagnostics() plots different types of residuals. The
+reader may be especially interested in the diagnostics of ``deviance''
+for its clarity as providing an overall diagniostic by returning a
+unique plot for all selected covariates.
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -960,7 +964,7 @@ returning a unique plot for all selected covariates.
 \includegraphics{survival_pbc_files/figure-latex/unnamed-chunk-38-1.pdf}
 
 Similarly the returning curve (in blue) was expected to be as flat as
-possible, distributed around 0 and the data to be homogeneously
+possible, distributed around 0 (in red) and the data to be homogeneously
 distributed on the graph in order to consider the hazard ratio
 hypothesis to validate the applied Cox model on the studied data set.
 Which once again appeared to be the case overall.
